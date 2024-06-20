@@ -1,8 +1,7 @@
-
-Here's a revised version with corrected grammar and spelling:
-
-Auto Update Posters for Jellyfin
+# Auto Update Posters for Jellyfin
 This tool converts .zip files from https://theposterdb.com/ into dedicated folders and updates the posters in Jellyfin.
+
+## Requirements: Python 3.11 
 
 Steps to install:
 
@@ -13,12 +12,12 @@ Steps to install:
 5. Start the script with `python main.py`.
 6. ## The Script will crash on the first launch but these folders should have been created:
 
-./Cover
--- ./Movies
--- ./Shows
--- ./Collections
-./Consumed
-./RawCover
+- Cover
+  - Movies
+  - Shows
+  - Collections
+- Consumed
+- RawCover
 
 7.  Start the script again with `python main.py`.
 
@@ -26,5 +25,5 @@ Check the root folder for a newly created file named missing_folders.txt. You ca
 
 Place the zip files into the RawCover folder.
 
-Current Limitations:
-No support for zip files containing movies and TV shows. Zip files with multiple movies or shows are no problem.
+# Current Limitations:
+## No support for zip files containing movies and TV shows. Zip files with multiple movies or shows are no problem.
