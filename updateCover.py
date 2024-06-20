@@ -11,8 +11,8 @@ api_key = data["api_key"]
 
 # Define paths and directories
 cover_dir = './Cover'
-shows_dir = os.path.join(cover_dir, 'Shows')
-movies_dir = os.path.join(cover_dir, 'Movies')
+shows_dir = os.path.join(cover_dir, 'Poster')
+movies_dir = os.path.join(cover_dir, 'Poster')
 
 missing_folders = []
 

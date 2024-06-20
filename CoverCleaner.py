@@ -8,17 +8,19 @@ from PIL import Image  # Pillow library for image file handling
 # Paths definition
 raw_cover_dir = './RawCover'
 cover_dir = './Cover'
-movies_dir = os.path.join(cover_dir, 'Movies')
-shows_dir = os.path.join(cover_dir, 'Shows')
+movies_dir = os.path.join(cover_dir, './Poster')
+shows_dir = os.path.join(cover_dir, './Poster')
 collections_dir = os.path.join(cover_dir, 'Collections')
 consumed_dir = './Consumed'
 
 # Function to organize covers from a directory
 def organize_covers():
     # Ensure target directories exist
-    for dir_path in [movies_dir, shows_dir, collections_dir, consumed_dir]:
+    for dir_path in [movies_dir, shows_dir, collections_dir, consumed_dir, raw_cover_dir]:
         if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
+            #os.makedirs(dir_path)
+            print("First Startup")
+
 
     # List of files to process (both zip and individual image files)
     files_to_process = [item for item in os.listdir(raw_cover_dir) if os.path.isfile(os.path.join(raw_cover_dir, item))]
