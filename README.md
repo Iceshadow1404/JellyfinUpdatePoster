@@ -7,7 +7,7 @@ Steps to install:
 
 1. Clone this repository with `git clone https://github.com/Iceshadow1404/JellyfinUpdatePoster/`.
 2. Navigate into the folder with `cd JellyfinUpdatePoster`.
-3. Install all the required packages with `pip install Pillow`.
+3. Install all the required packages with `pip install Pillow requests`.
 4. Add your Jellyfin IP:PORT and API key to config.json.
 5. Start the script with `python main.py`.
 6. ## The Script will crash on the first launch but these folders should have been created:
@@ -17,6 +17,7 @@ Steps to install:
   - Collections
 - Consumed
 - RawCover
+- Replaced
 
 7.  Start the script again with `python main.py`.
 
