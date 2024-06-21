@@ -41,11 +41,15 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
     for item in items:
         media_info = {
             'Id': item['Id'],
-            'Name': item.get('OriginalTitle', item['Name']),  # Use OriginalTitle if available, else Name
+            'Name': item.get('Name'),  # Use 'Name' as default
             'ParentId': item.get('ParentId'),
             'Type': item['Type'],  # Add 'Type' to distinguish between Series, Season, and Movie
             'Year': item.get('ProductionYear', 'Unknown')  # Default to 'Unknown' if ProductionYear is not present
         }
+        # Include OriginalTitle if available
+        if 'OriginalTitle' in item:
+            media_info['OriginalTitle'] = item['OriginalTitle']
+
         media_list.append(media_info)
 
     # Save media information to a JSON file
@@ -57,9 +61,10 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
     return media_list
 
 
+
 def sort_series_and_movies(input_filename, output_filename):
     try:
-        with open(input_filename, 'r', encoding='utf-8') as file:  # Specify encoding as utf-8
+        with open(input_filename, 'r', encoding='utf-8') as file:
             data = json.load(file)
         print(f"Data loaded successfully from {input_filename}")
     except Exception as e:
@@ -80,11 +85,15 @@ def sort_series_and_movies(input_filename, output_filename):
             series_dict[parent_id][season_name] = season_id
         else:
             series_id = item['Id']
-            series_name = item.get('OriginalTitle', item['Name'])  # Use OriginalTitle if available
+            series_name = item.get('Name')  # Use 'Name' as default
+            original_title = item.get('OriginalTitle')  # Get OriginalTitle if available
             if series_id not in series_dict:
                 series_dict[series_id] = {"Name": series_name}
             else:
                 series_dict[series_id]["Name"] = series_name
+
+            if original_title:
+                series_dict[series_id]["OriginalTitle"] = original_title
 
             if 'Year' in item:
                 series_dict[series_id]["Year"] = item['Year']
@@ -96,10 +105,12 @@ def sort_series_and_movies(input_filename, output_filename):
                 "Id": series_id,
                 "Name": details["Name"]
             }
+            if "OriginalTitle" in details:
+                series_info["OriginalTitle"] = details["OriginalTitle"]
             if "Year" in details:
                 series_info["Year"] = details["Year"]
             seasons = {season_name: season_id for season_name, season_id in details.items() if
-                       season_name != "Name" and season_name != "Year"}
+                       season_name != "Name" and season_name != "OriginalTitle" and season_name != "Year"}
             if seasons:
                 series_info.update(seasons)
             result.append(series_info)
@@ -107,8 +118,9 @@ def sort_series_and_movies(input_filename, output_filename):
     result.sort(key=lambda x: x['Name'])
 
     try:
-        with open(output_filename, 'w', encoding='utf-8') as outfile:  # Specify encoding as utf-8
+        with open(output_filename, 'w', encoding='utf-8') as outfile:
             json.dump(result, outfile, indent=4)
         print(f"Sorted series and movies saved to {output_filename}")
     except Exception as e:
         print(f"Error saving JSON file: {e}")
+
