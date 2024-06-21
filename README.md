@@ -13,17 +13,15 @@ Steps to install:
 6. ## The Script will crash on the first launch but these folders should have been created:
 
 - Cover
-  - Movies
-  - Shows
+  - Poster
   - Collections
 - Consumed
 - RawCover
 
 7.  Start the script again with `python main.py`.
 
+
 Check the root folder for a newly created file named missing_folders.txt. You can refer to this file to see the exact names of the required folders. Note that not all folders need to be present for the script to function correctly.
 
 Place the zip files into the RawCover folder.
 
-# Current Limitations:
-## No support for zip files containing movies and TV shows. Zip files with multiple movies or shows are no problem.
