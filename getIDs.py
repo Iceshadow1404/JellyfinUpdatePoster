@@ -1,5 +1,6 @@
 import json
 import requests
+import re
 
 output_filename = 'sorted_series.json'
 
@@ -7,7 +8,6 @@ output_filename = 'sorted_series.json'
 def start_get_and_save_series_and_movie(api_key, jellyfin_url):
     media_list = get_and_save_series_and_movies(api_key, jellyfin_url)
     if media_list:
-        print("Successfully retrieved and saved series and movies data.")
         sort_series_and_movies('raw.json', output_filename)
     else:
         print("Failed to retrieve series and movies data.")
@@ -23,8 +23,6 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
         'IncludeItemTypes': 'Series,Season,Movie',  # Include Series, Seasons, and Movies
         'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,Seasons,ProductionYear'  # Add OriginalTitle
     }
-
-    print(f'Sending request to {url} with headers {headers} and params {params}')
 
     response = requests.get(url, headers=headers, params=params)
     if response.status_code != 200:
@@ -50,31 +48,42 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
         if 'OriginalTitle' in item:
             media_info['OriginalTitle'] = item['OriginalTitle']
 
+        # Check and clean the Name field
+        media_info['Name'] = clean_movie_name(media_info['Name'])
+
         media_list.append(media_info)
 
     # Save media information to a JSON file
     with open('raw.json', 'w', encoding='utf-8') as f:
         json.dump(media_list, f, ensure_ascii=False, indent=4)
-
-    print('Saved raw JSON')
-
     return media_list
 
+def clean_movie_name(name):
+    pattern = r' \(\d{4}\)$'
+    return re.sub(pattern, '', name)
 
 
 def sort_series_and_movies(input_filename, output_filename):
     try:
         with open(input_filename, 'r', encoding='utf-8') as file:
             data = json.load(file)
-        print(f"Data loaded successfully from {input_filename}")
     except Exception as e:
         print(f"Error loading JSON file: {e}")
         return
 
     series_dict = {}
+    specials_dict = {}  # Dictionary to hold specials separately
 
     for item in data:
         if item['Name'] == "Season Unknown" or item["Name"] == "Specials":
+            if item["Name"] == "Specials":
+                # Handle Specials as Season 0
+                parent_id = item['ParentId']
+                season_name = "Season 0"
+                season_id = item['Id']
+                if parent_id not in series_dict:
+                    series_dict[parent_id] = {}
+                series_dict[parent_id][season_name] = season_id
             continue  # Skip "Season Unknown" entries
         elif item['Name'].startswith("Season") or item['Name'].startswith("Partie"):
             parent_id = item['ParentId']
@@ -99,6 +108,20 @@ def sort_series_and_movies(input_filename, output_filename):
                 series_dict[series_id]["Year"] = item['Year']
 
     result = []
+
+    # Add Specials (Season 0) to result
+    for parent_id, seasons in series_dict.items():
+        if "Specials" in seasons:
+            special_info = {
+                "Id": seasons["Specials"],
+                "Name": "Specials",
+                "ParentId": parent_id,
+                "Type": "Season",
+                "Year": 2022  # Adjust year as needed
+            }
+            result.append(special_info)
+
+    # Add other seasons and series to result
     for series_id, details in series_dict.items():
         if "Name" in details:
             series_info = {
@@ -110,7 +133,7 @@ def sort_series_and_movies(input_filename, output_filename):
             if "Year" in details:
                 series_info["Year"] = details["Year"]
             seasons = {season_name: season_id for season_name, season_id in details.items() if
-                       season_name != "Name" and season_name != "OriginalTitle" and season_name != "Year"}
+                       season_name != "Name" and season_name != "OriginalTitle" and season_name != "Year" and season_name != "Specials"}
             if seasons:
                 series_info.update(seasons)
             result.append(series_info)
@@ -120,7 +143,6 @@ def sort_series_and_movies(input_filename, output_filename):
     try:
         with open(output_filename, 'w', encoding='utf-8') as outfile:
             json.dump(result, outfile, indent=4)
-        print(f"Sorted series and movies saved to {output_filename}")
     except Exception as e:
         print(f"Error saving JSON file: {e}")
 

@@ -3,93 +3,123 @@ import re
 import shutil
 from pathlib import Path
 import zipfile
-from PIL import Image  # Pillow library for image file handling
+from PIL import Image
 
 # Paths definition
 raw_cover_dir = './RawCover'
 cover_dir = './Cover'
-movies_dir = os.path.join(cover_dir, './Poster')
-shows_dir = os.path.join(cover_dir, './Poster')
+movies_dir = os.path.join(cover_dir, 'Poster')
+shows_dir = os.path.join(cover_dir, 'Poster')
 collections_dir = os.path.join(cover_dir, 'Collections')
 consumed_dir = './Consumed'
+replaced_dir = './Replaced'
 
 # Function to organize covers from a directory
 def organize_covers():
-    # Ensure target directories exist
-    for dir_path in [movies_dir, shows_dir, collections_dir, consumed_dir, raw_cover_dir]:
+    for dir_path in [movies_dir, shows_dir, collections_dir, consumed_dir, raw_cover_dir, replaced_dir]:
         if not os.path.exists(dir_path):
-            #os.makedirs(dir_path)
-            print("First Startup")
+            os.makedirs(dir_path)
+            log(f"Created directory: {dir_path}")
 
-
-    # List of files to process (both zip and individual image files)
     files_to_process = [item for item in os.listdir(raw_cover_dir) if os.path.isfile(os.path.join(raw_cover_dir, item))]
+
+    if not files_to_process:
+        log("No Files to process", success=False)
 
     for file_name in files_to_process:
         file_path = os.path.join(raw_cover_dir, file_name)
 
-        if file_name.endswith('.zip'):
-            process_zip_file(file_path)
-        elif file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
-            process_image_file(file_path)
+        try:
+            if file_name.endswith('.zip'):
+                process_zip_file(file_path)
+            elif file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                process_image_file(file_path)
 
-        # Move processed file to /Consumed directory
-        shutil.move(file_path, os.path.join(consumed_dir, file_name))
+            shutil.move(file_path, os.path.join(consumed_dir, file_name))
+            log(f"Processed: {file_name} -> Consumed/{file_name}")
+
+        except Exception as e:
+            log(f"Error processing {file_name}: {e}", success=False)
+
 
 def process_zip_file(zip_path):
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             extracted_files = [file_info.filename for file_info in zip_ref.infolist()]
-
-            # Check if it's a series (at least one season file in ZIP)
             is_series = any(re.match(r'.*Season (\d+)', filename) or "Specials" in filename for filename in extracted_files)
-
-            # Check if there's a collection
             has_collection = any("Collection" in filename or "Collections" in filename for filename in extracted_files)
 
             for filename in extracted_files:
                 file_info = zip_ref.getinfo(filename)
-                file_ext = Path(filename).suffix
+                file_ext = Path(filename).suffix.lower()
 
-                if is_series:
-                    # It's a series
-                    series_match = re.match(r'(.+?) \((\d{4})\)', filename)
-                    if series_match:
-                        series_name, series_year = series_match.groups()
-                        series_dir = os.path.join(shows_dir, f"{series_name} ({series_year})")
-                        Path(series_dir).mkdir(parents=True, exist_ok=True)
+                # Check if the file is an image file (PNG, JPG, JPEG, WebP)
+                if file_ext in ('.png', '.jpg', '.jpeg', '.webp'):
+                    # Determine target filename
+                    if is_series:
+                        series_match = re.match(r'(.+?) \((\d{4})\)', filename)
+                        if series_match:
+                            series_name, series_year = series_match.groups()
+                            series_dir = os.path.join(shows_dir, f"{series_name} ({series_year})")
+                            Path(series_dir).mkdir(parents=True, exist_ok=True)
 
-                        # Check if it's a season
-                        season_match = re.match(r'.*Season (\d+)', filename)
-                        if season_match:
-                            season_number = int(season_match.group(1))
-                            target_filename = f'Season{season_number:02}{file_ext}'
-                        elif "Specials" in filename:
-                            target_filename = f'Season00{file_ext}'
-                        else:
-                            target_filename = f'poster{file_ext}'
+                            season_match = re.match(r'.*Season (\d+)', filename)
+                            if season_match:
+                                season_number = int(season_match.group(1))
+                                target_filename = f'Season{season_number:02}.jpg'
+                            elif "Specials" in filename:
+                                target_filename = f'Season00.jpg'
+                            else:
+                                target_filename = 'poster.jpg'
 
-                        target_path = os.path.join(series_dir, target_filename)
+                            target_path = os.path.join(series_dir, target_filename)
 
-                        # Extract and copy file
-                        with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
-                            shutil.copyfileobj(source, target)
+                            if os.path.exists(target_path):
+                                # Move existing file to ./Replaced
+                                replaced_subdir = os.path.join(replaced_dir, f"{series_name} ({series_year})")
+                                if not os.path.exists(replaced_subdir):
+                                    os.makedirs(replaced_subdir)
+                                # Generate a unique filename for the replaced file
+                                replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
+                                shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
+                                log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
+
+                            with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
+                                shutil.copyfileobj(source, target)
+                                log(f"Processed: {filename} -> {series_dir}/{target_filename}", details=f"{series_dir}/{target_filename}")
+
+                    else:
+                        movie_match = re.match(r'(.+?) \((\d{4})\)', filename)
+                        if movie_match:
+                            movie_name, movie_year = movie_match.groups()
+                            movie_dir = os.path.join(movies_dir, f"{movie_name} ({movie_year})")
+                            Path(movie_dir).mkdir(parents=True, exist_ok=True)
+
+                            # Check if it's the main poster
+                            if "Season" not in filename and "Specials" not in filename:
+                                target_filename = 'poster.jpg'
+                            else:
+                                target_filename = os.path.splitext(filename)[0] + '.jpg'
+
+                            target_path = os.path.join(movie_dir, target_filename)
+
+                            if os.path.exists(target_path):
+                                # Move existing file to ./Replaced
+                                replaced_subdir = os.path.join(replaced_dir, f"{movie_name} ({movie_year})")
+                                if not os.path.exists(replaced_subdir):
+                                    os.makedirs(replaced_subdir)
+                                # Generate a unique filename for the replaced file
+                                replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
+                                shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
+                                log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
+
+                            with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
+                                shutil.copyfileobj(source, target)
+                                log(f"Processed: {filename} -> {movie_dir}/{target_filename}", details=f"{movie_dir}/{target_filename}")
 
                 else:
-                    # It's a movie
-                    movie_match = re.match(r'(.+?) \((\d{4})\)', filename)
-                    if movie_match:
-                        movie_name, movie_year = movie_match.groups()
-                        movie_dir = os.path.join(movies_dir, f"{movie_name} ({movie_year})")
-                        Path(movie_dir).mkdir(parents=True, exist_ok=True)
-                        target_filename = f'poster{file_ext}'
-                        target_path = os.path.join(movie_dir, target_filename)
+                    log(f"Ignored file: {filename} (not a supported image format)", success=False)
 
-                        # Extract and copy file
-                        with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
-                            shutil.copyfileobj(source, target)
-
-            # Process collections after movies are processed
             if has_collection:
                 for filename in extracted_files:
                     if "Collection" in filename or "Collections" in filename:
@@ -98,69 +128,123 @@ def process_zip_file(zip_path):
                             collection_name = collection_match.group(1)
                             collection_dir = os.path.join(collections_dir, collection_name)
                             Path(collection_dir).mkdir(parents=True, exist_ok=True)
-                            target_filename = 'poster.png'
+                            target_filename = os.path.splitext(filename)[0] + '.jpg'
                             target_path = os.path.join(collection_dir, target_filename)
+
+                            if os.path.exists(target_path):
+                                # Move existing file to ./Replaced
+                                replaced_subdir = os.path.join(replaced_dir, collection_name)
+                                if not os.path.exists(replaced_subdir):
+                                    os.makedirs(replaced_subdir)
+                                # Generate a unique filename for the replaced file
+                                replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
+                                shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
+                                log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
 
                             with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
                                 shutil.copyfileobj(source, target)
+                                log(f"Processed: {filename} -> {collection_dir}/{target_filename}", details=f"{collection_dir}/{target_filename}")
 
     except zipfile.BadZipFile:
-        print(f"Error: {zip_path} is not a valid zip file.")
+        log(f"Error: {zip_path} is not a valid zip file.", success=False)
     except Exception as e:
-        print(f"Error processing {zip_path}: {e}")
+        log(f"Error processing {zip_path}: {e}", success=False)
+
 
 def process_image_file(image_path):
     try:
-        # Open image file using Pillow
         with Image.open(image_path) as img:
             img_basename = os.path.basename(image_path)
             movie_name, movie_year = extract_movie_info(img_basename)
-
-            # Create movie directory
             movie_dir = os.path.join(movies_dir, f"{movie_name} ({movie_year})")
             Path(movie_dir).mkdir(parents=True, exist_ok=True)
-
-            # Ensure the image is saved as "poster"
-            target_filename = 'poster' + os.path.splitext(img_basename)[1]
+            target_filename = 'poster' + os.path.splitext(img_basename)[1].lower()
             target_path = os.path.join(movie_dir, target_filename)
 
-            # Copy image file to movie directory
+            # Check if target file already exists
+            if os.path.exists(target_path):
+                # Move existing file to ./Replaced
+                replaced_subdir = os.path.join(replaced_dir, f"{movie_name} ({movie_year})")
+                if not os.path.exists(replaced_subdir):
+                    os.makedirs(replaced_subdir)
+                # Generate a unique filename for the replaced file
+                replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
+                shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
+                log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
+
+            # Now copy the new file to the target directory
             shutil.copyfile(image_path, target_path)
 
+            # Convert to JPG if it's not already in JPG format
+            if not target_filename.endswith('.jpg'):
+                converted_path = convert_to_jpg(target_path)
+                if converted_path:
+                    target_path = converted_path
+                    target_filename = os.path.basename(converted_path)
+
+            log(f"Processed: {img_basename} -> {movie_dir}/{target_filename}", details=f"{movie_dir}/{target_filename}")
+
     except Exception as e:
-        print(f"Error processing image file {image_path}: {e}")
+        log(f"Error processing image file {image_path}: {e}", success=False)
+
+def generate_unique_filename(directory, filename):
+    # Generate a unique filename by appending a number
+    base_name, ext = os.path.splitext(filename)
+    counter = 1
+    new_filename = filename
+    while os.path.exists(os.path.join(directory, new_filename)):
+        new_filename = f"{base_name}_{counter}{ext}"
+        counter += 1
+    return new_filename
+
+
 
 def extract_movie_info(filename):
-    # Extract movie name and year from filename
     movie_match = re.match(r'(.+?) \((\d{4})\)', filename)
     if movie_match:
         movie_name, movie_year = movie_match.groups()
     else:
-        # If no year found, assume it's part of the movie name
         movie_name = filename.split('(')[0].strip()
         movie_year = 'Unknown'
     return movie_name, movie_year
 
-if __name__ == "__main__":
-    organize_covers()
 
-    # Print the directories created
-    print("Created directories:")
+def convert_to_jpg(image_path):
+    try:
+        img = Image.open(image_path)
 
-    # Movies subdirectories
-    print(f"- {movies_dir}")
-    movie_subdirs = os.listdir(movies_dir)
-    for subdir in movie_subdirs:
-        print(f"  - {os.path.join(movies_dir, subdir)}")
+        if img.format != 'JPEG' and not image_path.lower().endswith('.jpeg'):
+            jpg_path = os.path.splitext(image_path)[0] + '.jpg'
+            img.convert('RGB').save(jpg_path, 'JPEG')  # Als JPEG speichern
 
-    # Shows subdirectories
-    print(f"- {shows_dir}")
-    show_subdirs = os.listdir(shows_dir)
-    for subdir in show_subdirs:
-        print(f"  - {os.path.join(shows_dir, subdir)}")
+            # Originaldatei entfernen
+            os.remove(image_path)
 
-    # Collections subdirectories
-    print(f"- {collections_dir}")
-    collection_subdirs = os.listdir(collections_dir)
-    for subdir in collection_subdirs:
-        print(f"  - {os.path.join(collections_dir, subdir)}")
+            log(f"Converted {image_path} to JPG format and deleted original.")
+
+            return jpg_path
+
+        if img.format == 'JPEG' or image_path.lower().endswith('.jpeg'):
+            jpg_path = os.path.splitext(image_path)[0] + '.jpg'
+            img.convert('RGB').save(jpg_path, 'JPEG')  # Als JPEG speichern
+
+            # Originaldatei entfernen
+            os.remove(image_path)
+
+            log(f"Converted {image_path} to JPG format and deleted original.")
+
+    except Exception as e:
+        log(f"Error converting {image_path} to JPG: {e}", success=False)
+
+    return None
+
+
+def log(message, success=True, details=None):
+    with open('processing.log', 'a') as f:
+        if success:
+            if details:
+                f.write(f"SUCCESS: {message} -> {details}\n")
+            else:
+                f.write(f"SUCCESS: {message}\n")
+        else:
+            f.write(f"ERROR: {message}\n")

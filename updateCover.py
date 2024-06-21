@@ -46,7 +46,6 @@ def clean_json_names(json_filename):
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(json_data, f, indent=4)
 
-    print(f"Names in the JSON file {json_filename} have been cleaned.")
 
 def assign_images_and_update_jellyfin(json_filename):
     json_path = os.path.join(os.getcwd(), json_filename)
@@ -62,8 +61,8 @@ def assign_images_and_update_jellyfin(json_filename):
 
     # Process each series or movie in the JSON file
     for item in json_data:
-        item_name = item.get('Name')
-        item_original_title = item.get('OriginalTitle', item_name)  # Use OriginalTitle if available, else use Name
+        item_name = item.get('Name').strip()
+        item_original_title = item.get('OriginalTitle', item_name).strip()  # Use strip() to remove leading/trailing spaces
         item_year = item.get('Year')
         item_id = item.get('Id')
 
@@ -83,13 +82,13 @@ def assign_images_and_update_jellyfin(json_filename):
             item_dir = os.path.join(movies_dir, f"{item_name} ({item_year})")
         else:
             print(f"Folder not found for item: {item_original_title} ({item_year}) or {item_name} ({item_year}). Skipping.")
-            missing_folder = f"{item_original_title} ({item_year}) or {item_name} ({item_year})"
+            missing_folder = f"{item_original_title} ({item_year}) / {item_name} ({item_year})"
             missing_folders.append(missing_folder)
             continue
 
         # Find main poster for the item
         main_poster_path = None
-        for poster_filename in ['poster.png', 'poster.jpeg', 'poster.jpg']:
+        for poster_filename in ['poster.png', 'poster.jpeg', 'poster.jpg', 'poster.webp']:
             poster_path = os.path.join(item_dir, poster_filename)
             if os.path.exists(poster_path):
                 main_poster_path = poster_path
@@ -108,7 +107,7 @@ def assign_images_and_update_jellyfin(json_filename):
                 season_image_filename = f'Season{season_number.zfill(2)}'
                 season_image_path = None
 
-                for ext in ['png', 'jpg', 'jpeg']:
+                for ext in ['png', 'jpg', 'jpeg', 'webp']:
                     season_image_path = os.path.join(item_dir, f"{season_image_filename}.{ext}")
                     if os.path.exists(season_image_path):
                         break
@@ -139,7 +138,6 @@ def assign_images_and_update_jellyfin(json_filename):
     print(f"Processing completed for {json_filename}")
 
 
-
 def update_jellyfin(id, image_path, item_name, api_key, jellyfin_url):
     endpoint = f'/Items/{id}/Images/Primary/0'
     url = jellyfin_url + endpoint
@@ -151,6 +149,8 @@ def update_jellyfin(id, image_path, item_name, api_key, jellyfin_url):
 
     with open(image_path, 'rb') as file:
         image_data = file.read()
+
+        # Determine content type based on file extension
         content_type = get_content_type(image_path)
         headers['Content-Type'] = content_type
 
@@ -162,6 +162,7 @@ def update_jellyfin(id, image_path, item_name, api_key, jellyfin_url):
     else:
         print(f'Error updating image for {item_name}. Status Code: {response.status_code}')
         print(f'Response: {response.text}')
+
 
 def get_content_type(file_path):
     # Determine the Content-Type based on the file extension
