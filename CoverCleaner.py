@@ -240,7 +240,7 @@ def convert_to_jpg(image_path):
 
 
 def log(message, success=True, details=None):
-    with open('processing.log', 'a') as f:
+    with open('processing.log', 'a', encoding='utf-8') as f:
         if success:
             if details:
                 f.write(f"SUCCESS: {message} -> {details}\n")

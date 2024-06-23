@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from base64 import b64encode
+from CoverCleaner import log
 
 with open("config.json", 'r') as file:
     data = json.load(file)
@@ -13,9 +14,9 @@ api_key = data["api_key"]
 cover_dir = './Cover'
 shows_dir = os.path.join(cover_dir, 'Poster')
 movies_dir = os.path.join(cover_dir, 'Poster')
+collections_dir = os.path.join(cover_dir, 'Collections')
 
 missing_folders = []
-
 
 def clean_json_names(json_filename):
     json_path = os.path.join(os.getcwd(), json_filename)
@@ -47,7 +48,9 @@ def clean_json_names(json_filename):
         json.dump(json_data, f, indent=4)
 
 
-def assign_images_and_update_jellyfin(json_filename):
+def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
+    global missing_folders  # Ensure we are using the global missing_folders variable
+
     json_path = os.path.join(os.getcwd(), json_filename)
 
     # Ensure the JSON file exists
@@ -65,14 +68,17 @@ def assign_images_and_update_jellyfin(json_filename):
         item_original_title = item.get('OriginalTitle', item_name).strip()  # Use strip() to remove leading/trailing spaces
         item_year = item.get('Year')
         item_id = item.get('Id')
+        item_type = item.get('Type')
 
         if not item_original_title or not item_year or not item_id:
             print(f"Invalid data found for item: {item}. Skipping.")
             continue
 
-        # Check if the item is a show or movie based on the directory existence
+        # Check if the item is a show, movie, or boxset based on the directory existence
         item_dir = None
-        if os.path.exists(os.path.join(shows_dir, f"{item_original_title} ({item_year})")):
+        if item_type == "BoxSet":
+            item_dir = os.path.join(collections_dir, item_name)  # Check only by name without year
+        elif os.path.exists(os.path.join(shows_dir, f"{item_original_title} ({item_year})")):
             item_dir = os.path.join(shows_dir, f"{item_original_title} ({item_year})")
         elif os.path.exists(os.path.join(shows_dir, f"{item_name} ({item_year})")):
             item_dir = os.path.join(shows_dir, f"{item_name} ({item_year})")
@@ -80,9 +86,11 @@ def assign_images_and_update_jellyfin(json_filename):
             item_dir = os.path.join(movies_dir, f"{item_original_title} ({item_year})")
         elif os.path.exists(os.path.join(movies_dir, f"{item_name} ({item_year})")):
             item_dir = os.path.join(movies_dir, f"{item_name} ({item_year})")
+        elif os.path.exists(os.path.join(collections_dir, f"{item_name}")):  # Adjusted line here
+            item_dir = os.path.join(collections_dir, f"{item_name}")
         else:
-            print(f"Folder not found for item: {item_original_title} ({item_year}) or {item_name} ({item_year}). Skipping.")
-            missing_folder = f"{item_original_title} ({item_year}) / {item_name} ({item_year})"
+            missing_folder = item_name if item_type == "BoxSet" else f"{item_original_title} ({item_year}) / {item_name} ({item_year})"
+            print(f"Folder not found for item: {missing_folder}. Skipping.")
             missing_folders.append(missing_folder)
             continue
 
@@ -138,6 +146,7 @@ def assign_images_and_update_jellyfin(json_filename):
     print(f"Processing completed for {json_filename}")
 
 
+
 def update_jellyfin(id, image_path, item_name, api_key, jellyfin_url):
     endpoint = f'/Items/{id}/Images/Primary/0'
     url = jellyfin_url + endpoint
@@ -159,6 +168,7 @@ def update_jellyfin(id, image_path, item_name, api_key, jellyfin_url):
     response = requests.post(url, headers=headers, data=image_base64)
     if response.status_code == 204:
         print(f'Updated image for {item_name} successfully.')
+        #log(f'Updated image for {item_name} successfully.')
     else:
         print(f'Error updating image for {item_name}. Status Code: {response.status_code}')
         print(f'Response: {response.text}')

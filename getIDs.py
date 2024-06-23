@@ -20,7 +20,7 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
     url = f'{jellyfin_url}/Items'
     params = {
         'Recursive': 'true',
-        'IncludeItemTypes': 'Series,Season,Movie',  # Include Series, Seasons, and Movies
+        'IncludeItemTypes': 'Series,Season,Movie,BoxSet',
         'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,Seasons,ProductionYear'  # Add OriginalTitle
     }
 
@@ -41,7 +41,7 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
             'Id': item['Id'],
             'Name': item.get('Name'),  # Use 'Name' as default
             'ParentId': item.get('ParentId'),
-            'Type': item['Type'],  # Add 'Type' to distinguish between Series, Season, and Movie
+            'Type': item['Type'],  # Add 'Type' to distinguish between Series, Season, Movie, and BoxSet
             'Year': item.get('ProductionYear', 'Unknown')  # Default to 'Unknown' if ProductionYear is not present
         }
         # Include OriginalTitle if available
@@ -73,8 +73,13 @@ def sort_series_and_movies(input_filename, output_filename):
 
     series_dict = {}
     specials_dict = {}  # Dictionary to hold specials separately
+    boxsets = []
 
     for item in data:
+        if item['Type'] == 'BoxSet':
+            boxsets.append(item)
+            continue  # Skip boxsets in the series and season processing
+
         if item['Name'] == "Season Unknown" or item["Name"] == "Specials":
             if item["Name"] == "Specials":
                 # Handle Specials as Season 0
@@ -116,8 +121,7 @@ def sort_series_and_movies(input_filename, output_filename):
                 "Id": seasons["Specials"],
                 "Name": "Specials",
                 "ParentId": parent_id,
-                "Type": "Season",
-                "Year": 2022  # Adjust year as needed
+                "Type": "Season"
             }
             result.append(special_info)
 
@@ -140,9 +144,21 @@ def sort_series_and_movies(input_filename, output_filename):
 
     result.sort(key=lambda x: x['Name'])
 
+    # Add boxsets to result
+    for boxset in boxsets:
+        boxset_info = {
+            "Id": boxset['Id'],
+            "Name": boxset['Name'].replace("Filmreihe", "").replace("Collection", ""),
+            "Type": "BoxSet"
+        }
+        if "OriginalTitle" in boxset:
+            boxset_info["OriginalTitle"] = boxset["OriginalTitle"]
+        if "Year" in boxset:
+            boxset_info["Year"] = boxset["Year"]
+        result.append(boxset_info)
+
     try:
         with open(output_filename, 'w', encoding='utf-8') as outfile:
-            json.dump(result, outfile, indent=4)
+            json.dump(result, outfile, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Error saving JSON file: {e}")
-
