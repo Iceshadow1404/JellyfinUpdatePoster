@@ -172,9 +172,12 @@ def save_if_different(output_filename, new_data):
 
         if old_data == new_data:
             print("No changes detected, not saving the file.")
-            return
         else:
             print("Changes detected, saving the new file.")
+
+            # Add debugging outputs
+            print(f"old_data: {old_data}")
+            print(f"new_data: {new_data}")
 
             if os.path.exists('./missing_folders.txt'):
                 os.remove('./missing_folders.txt')
@@ -183,7 +186,6 @@ def save_if_different(output_filename, new_data):
             assign_images_and_update_jellyfin(output_filename, jellyfin_url, api_key)
 
             if missing_folders:
-
                 if os.path.exists('./missing_folders.txt'):
                     os.remove('./missing_folders.txt')
 
