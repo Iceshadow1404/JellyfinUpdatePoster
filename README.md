@@ -1,7 +1,7 @@
 # Auto Update Posters for Jellyfin
 This tool converts .zip files from https://theposterdb.com/ into dedicated folders and updates the posters in Jellyfin.
 
-## Requirements: Python 3.11 
+## Requirements: Python 3.11 or newer
 
 Steps to install:
 
