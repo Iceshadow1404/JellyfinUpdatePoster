@@ -32,15 +32,10 @@ def clean_json_names(json_filename):
     # Clean names in the JSON data
     for series in json_data:
         if 'Name' in series:
-            series['Name'] = series['Name'].replace(':', '')
-            series['Name'] = series['Name'].replace('&', '')
-            series['Name'] = series['Name'].replace("'", '')
-            series['Name'] = series['Name'].replace("!", '')
+            series['Name'] = series['Name'].replace(':', '').replace('&', '').replace("'", '').replace("!", '')
         if 'OriginalTitle' in series:
-            series['OriginalTitle'] = series['OriginalTitle'].replace(':', '')
-            series['OriginalTitle'] = series['OriginalTitle'].replace('&', '')
-            series['OriginalTitle'] = series['OriginalTitle'].replace("'", '')
-            series['OriginalTitle'] = series['OriginalTitle'].replace("!", '')
+            series['OriginalTitle'] = series['OriginalTitle'].replace(':', '').replace('&', '').replace("'", '').replace("!", '')
+
 
     # Save cleaned data back to the JSON file
     with open(json_path, 'w', encoding='utf-8') as f:

@@ -161,10 +161,10 @@ def sort_series_and_movies(input_filename):
 
     return result
 
-def save_if_different(output_filename, new_data):
-    if os.path.exists(output_filename):
+def save_if_different(filename, new_data):
+    if os.path.exists(filename):
         try:
-            with open(output_filename, 'r', encoding='utf-8') as file:
+            with open(filename, 'r', encoding='utf-8') as file:
                 old_data = json.load(file)
         except Exception as e:
             print(f"Error loading old JSON file: {e}")
@@ -174,13 +174,6 @@ def save_if_different(output_filename, new_data):
             print("No changes detected, not saving the file.")
         else:
             print("Changes detected, saving the new file.")
-
-            # Add debugging outputs
-            print(f"old_data: {old_data}")
-            print(f"new_data: {new_data}")
-
-            if os.path.exists('./missing_folders.txt'):
-                os.remove('./missing_folders.txt')
 
             clean_json_names(output_filename)
             assign_images_and_update_jellyfin(output_filename, jellyfin_url, api_key)
@@ -196,7 +189,8 @@ def save_if_different(output_filename, new_data):
         print("No old file found, saving the new file.")
 
     try:
-        with open(output_filename, 'w', encoding='utf-8') as outfile:
+        with open(filename, 'w', encoding='utf-8') as outfile:
             json.dump(new_data, outfile, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Error saving JSON file: {e}")
+
