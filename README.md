@@ -19,9 +19,6 @@ Steps to install:
 - RawCover
 - Replaced
 
-7.  Start the script again with `python main.py`.
-8. Add Files to the RawCover Folder. 
-
 
 Check the root folder for a newly created file named missing_folders.txt. You can refer to this file to see the exact names of the required folders. Note that not all folders need to be present for the script to function correctly.
 
@@ -36,7 +33,6 @@ Checks Jellyfin every 30sec for new Items
 
 ## Current Limitations: No support for Season Images outside of zip files. 
 
-Place the zip files into the RawCover folder.
 
 ## How to use
 
