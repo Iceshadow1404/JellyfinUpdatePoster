@@ -30,6 +30,7 @@ Auto Updates Jellyfin Posters
 
 Checks Jellyfin every 30sec for new Items 
 
+History Feature when poster gets replaced
 
 ## Current Limitations: No support for Season Images outside of zip files. 
 
