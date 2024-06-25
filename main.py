@@ -65,7 +65,7 @@ def check_raw_cover():
                 main()
         except Exception as e:
             print(f"Error checking raw cover: {str(e)}")
-        time.sleep(30)
+        time.sleep(10)
     print("Checker thread stopped.")
 
 

@@ -77,11 +77,26 @@ def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
         # Check if the item is a show, movie, or boxset based on the directory existence
         item_dir = None
         if item_type == "BoxSet":
-            missing_folder = f"Collection Folder: {item_name}"
-            missing_folders.append(missing_folder)
-            print(f"Collection not found for item: {missing_folder}. Skipping.")
-            continue
-            item_dir = os.path.join(collections_dir, item_name)  # Check only by name without year
+            if os.path.exists(os.path.join(collections_dir, item_name)):
+                item_dir = os.path.join(collections_dir, item_name)  # Check only by name without year
+
+                # Find main poster for the item
+                main_poster_path = None
+                for poster_filename in ['poster.png', 'poster.jpeg', 'poster.jpg', 'poster.webp']:
+                    poster_path = os.path.join(item_dir, poster_filename)
+                    if os.path.exists(poster_path):
+                        main_poster_path = poster_path
+                        break
+
+                if main_poster_path:
+                    # Update Jellyfin with main poster
+                    update_jellyfin(item_id, main_poster_path, item_name, api_key, jellyfin_url)
+                else:
+                    print(f"Main poster not found for item: {item_original_title} ({item_year})")
+                    missing_folder = f"Collection Folder: {item_name}"
+                    missing_folders.append(missing_folder)
+                    print(f"Collection not found for item: {missing_folder}. Skipping.")
+
         elif os.path.exists(os.path.join(poster_dir, f"{item_original_title} ({item_year})")):
             item_dir = os.path.join(poster_dir, f"{item_original_title} ({item_year})")
         elif os.path.exists(os.path.join(poster_dir, f"{item_name} ({item_year})")):
@@ -96,10 +111,12 @@ def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
         # Find main poster for the item
         main_poster_path = None
         for poster_filename in ['poster.png', 'poster.jpeg', 'poster.jpg', 'poster.webp']:
-            poster_path = os.path.join(item_dir, poster_filename)
-            if os.path.exists(poster_path):
-                main_poster_path = poster_path
-                break
+            if item_dir is not None and poster_filename is not None:
+                poster_path = os.path.join(item_dir, poster_filename)
+                if os.path.exists(poster_path):
+                    main_poster_path = poster_path
+                    break
+
 
         if main_poster_path:
             # Update Jellyfin with main poster

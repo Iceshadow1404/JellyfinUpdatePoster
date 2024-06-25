@@ -150,7 +150,7 @@ def sort_series_and_movies(input_filename):
     for boxset in boxsets:
         boxset_info = {
             "Id": boxset['Id'],
-            "Name": boxset['Name'].replace("Filmreihe", "").replace("Collection", ""),
+            "Name": boxset['Name'].replace(" Filmreihe", "").replace(" Collection", ""),
             "Type": "BoxSet"
         }
         if "OriginalTitle" in boxset:
@@ -175,7 +175,10 @@ def save_if_different(output_filename, new_data):
             return
         else:
             print("Changes detected, saving the new file.")
-            print_changes(old_data, new_data)
+
+            if os.path.exists('./missing_folders.txt'):
+                os.remove('./missing_folders.txt')
+
             clean_json_names(output_filename)
             assign_images_and_update_jellyfin(output_filename, jellyfin_url, api_key)
 
@@ -195,21 +198,3 @@ def save_if_different(output_filename, new_data):
             json.dump(new_data, outfile, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Error saving JSON file: {e}")
-
-def print_changes(old_data, new_data):
-    changes = []
-    old_data_dict = {item['Id']: item for item in old_data}
-    new_data_dict = {item['Id']: item for item in new_data}
-
-    for new_id, new_item in new_data_dict.items():
-        if new_id not in old_data_dict:
-            changes.append(f"New item added: {new_item}")
-        elif old_data_dict[new_id] != new_item:
-            changes.append(f"Item updated: {new_item}")
-
-    for old_id in old_data_dict:
-        if old_id not in new_data_dict:
-            changes.append(f"Item removed: {old_data_dict[old_id]}")
-
-    for change in changes:
-        print(change)

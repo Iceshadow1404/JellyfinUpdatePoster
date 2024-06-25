@@ -120,30 +120,31 @@ def process_zip_file(zip_path):
                 else:
                     log(f"Ignored file: {filename} (not a supported image format)", success=False)
 
-            if has_collection:
-                for filename in extracted_files:
-                    if "Collection" in filename or "Collections" in filename:
-                        collection_match = re.match(r'(.+?) Collection', filename)
-                        if collection_match:
-                            collection_name = collection_match.group(1)
-                            collection_dir = os.path.join(collections_dir, collection_name)
-                            Path(collection_dir).mkdir(parents=True, exist_ok=True)
-                            target_filename = os.path.splitext(filename)[0] + '.jpg'
-                            target_path = os.path.join(collection_dir, target_filename)
+                if has_collection:
+                    for filename in extracted_files:
+                        if "Collection" in filename or "Collections" in filename:
+                            collection_match = re.match(r'(.+?) Collection', filename)
+                            if collection_match:
+                                collection_name = collection_match.group(1)
+                                collection_dir = os.path.join(collections_dir, collection_name)
+                                Path(collection_dir).mkdir(parents=True, exist_ok=True)
+                                target_filename = 'poster.jpg'
+                                target_path = os.path.join(collection_dir, target_filename)
 
-                            if os.path.exists(target_path):
-                                # Move existing file to ./Replaced
-                                replaced_subdir = os.path.join(replaced_dir, collection_name)
-                                if not os.path.exists(replaced_subdir):
-                                    os.makedirs(replaced_subdir)
-                                # Generate a unique filename for the replaced file
-                                replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
-                                shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
-                                log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
+                                if os.path.exists(target_path):
+                                    # Move existing file to ./Replaced
+                                    replaced_subdir = os.path.join(replaced_dir, collection_name)
+                                    if not os.path.exists(replaced_subdir):
+                                        os.makedirs(replaced_subdir)
+                                    # Generate a unique filename for the replaced file
+                                    replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
+                                    shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
+                                    log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
 
-                            with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
-                                shutil.copyfileobj(source, target)
-                                log(f"Processed: {filename} -> {collection_dir}/{target_filename}", details=f"{collection_dir}/{target_filename}")
+                                with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
+                                    shutil.copyfileobj(source, target)
+                                    log(f"Processed: {filename} -> {collection_dir}/{target_filename}",
+                                        details=f"{collection_dir}/{target_filename}")
 
     except zipfile.BadZipFile:
         log(f"Error: {zip_path} is not a valid zip file.", success=False)
