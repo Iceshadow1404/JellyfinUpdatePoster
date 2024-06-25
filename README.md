@@ -1,7 +1,7 @@
 # Auto Update Posters for Jellyfin
 This tool converts .zip files from https://theposterdb.com/ into dedicated folders and updates the posters in Jellyfin.
 
-## Requirements: Python 3.11 
+## Requirements: Python 3.11 or newer
 
 Steps to install:
 
@@ -19,11 +19,22 @@ Steps to install:
 - RawCover
 - Replaced
 
-7.  Start the script again with `python main.py`.
-8. Add Files to the RawCover Folder. 
-
 
 Check the root folder for a newly created file named missing_folders.txt. You can refer to this file to see the exact names of the required folders. Note that not all folders need to be present for the script to function correctly.
 
-Place the zip files into the RawCover folder.
+## Features:
 
+Converts and renames .zip and Single Image Files into Folders
+
+Auto Updates Jellyfin Posters
+
+Checks Jellyfin every 30sec for new Items 
+
+History Feature when poster gets replaced
+
+## Current Limitations: No support for Season Images outside of zip files. 
+
+
+## How to use:
+
+Start the script again with `python main.py` and add .zip or single images files into the RawCover Folder
