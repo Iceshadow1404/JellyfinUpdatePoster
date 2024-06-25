@@ -25,5 +25,19 @@ Steps to install:
 
 Check the root folder for a newly created file named missing_folders.txt. You can refer to this file to see the exact names of the required folders. Note that not all folders need to be present for the script to function correctly.
 
+## Features:
+
+Converts and renames .zip and Single Image Files into Folders
+
+Auto Updates Jellyfin Posters
+
+Checks Jellyfin every 30sec for new Items 
+
+
+## Current Limitations: No support for Season Images outside of zip files. 
+
 Place the zip files into the RawCover folder.
 
+## How to use
+
+Start the script again with `python main.py` and add .zip or single images files into the RawCover Folder
