@@ -1,17 +1,28 @@
 import json
 import requests
 import re
+import os
+from updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
+
+with open("config.json", 'r') as file:
+    data = json.load(file)
+
+jellyfin_url = data["jellyfin_url"]
+api_key = data["api_key"]
 
 output_filename = 'sorted_series.json'
-
+raw_filename = 'raw.json'
 
 def start_get_and_save_series_and_movie(api_key, jellyfin_url):
     media_list = get_and_save_series_and_movies(api_key, jellyfin_url)
     if media_list:
-        sort_series_and_movies('raw.json', output_filename)
+        new_sorted_data = sort_series_and_movies(raw_filename)
+        if new_sorted_data:
+            save_if_different(output_filename, new_sorted_data)
+        else:
+            print("Failed to sort series and movies data.")
     else:
         print("Failed to retrieve series and movies data.")
-
 
 def get_and_save_series_and_movies(api_key, jellyfin_url):
     headers = {
@@ -34,27 +45,23 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
         print("No items found in the response")
         return None
 
-    # Create a list to store media information
     media_list = []
     for item in items:
         media_info = {
             'Id': item['Id'],
-            'Name': item.get('Name'),  # Use 'Name' as default
+            'Name': item.get('Name'),
             'ParentId': item.get('ParentId'),
-            'Type': item['Type'],  # Add 'Type' to distinguish between Series, Season, Movie, and BoxSet
-            'Year': item.get('ProductionYear', 'Unknown')  # Default to 'Unknown' if ProductionYear is not present
+            'Type': item['Type'],
+            'Year': item.get('ProductionYear', 'Unknown')
         }
-        # Include OriginalTitle if available
         if 'OriginalTitle' in item:
             media_info['OriginalTitle'] = item['OriginalTitle']
 
-        # Check and clean the Name field
         media_info['Name'] = clean_movie_name(media_info['Name'])
 
         media_list.append(media_info)
 
-    # Save media information to a JSON file
-    with open('raw.json', 'w', encoding='utf-8') as f:
+    with open(raw_filename, 'w', encoding='utf-8') as f:
         json.dump(media_list, f, ensure_ascii=False, indent=4)
     return media_list
 
@@ -62,34 +69,32 @@ def clean_movie_name(name):
     pattern = r' \(\d{4}\)$'
     return re.sub(pattern, '', name)
 
-
-def sort_series_and_movies(input_filename, output_filename):
+def sort_series_and_movies(input_filename):
     try:
         with open(input_filename, 'r', encoding='utf-8') as file:
             data = json.load(file)
     except Exception as e:
         print(f"Error loading JSON file: {e}")
-        return
+        return None
 
     series_dict = {}
-    specials_dict = {}  # Dictionary to hold specials separately
+    specials_dict = {}
     boxsets = []
 
     for item in data:
         if item['Type'] == 'BoxSet':
             boxsets.append(item)
-            continue  # Skip boxsets in the series and season processing
+            continue
 
         if item['Name'] == "Season Unknown" or item["Name"] == "Specials":
             if item["Name"] == "Specials":
-                # Handle Specials as Season 0
                 parent_id = item['ParentId']
                 season_name = "Season 0"
                 season_id = item['Id']
                 if parent_id not in series_dict:
                     series_dict[parent_id] = {}
                 series_dict[parent_id][season_name] = season_id
-            continue  # Skip "Season Unknown" entries
+            continue
         elif item['Name'].startswith("Season") or item['Name'].startswith("Partie"):
             parent_id = item['ParentId']
             season_name = item['Name']
@@ -99,8 +104,8 @@ def sort_series_and_movies(input_filename, output_filename):
             series_dict[parent_id][season_name] = season_id
         else:
             series_id = item['Id']
-            series_name = item.get('Name')  # Use 'Name' as default
-            original_title = item.get('OriginalTitle')  # Get OriginalTitle if available
+            series_name = item.get('Name')
+            original_title = item.get('OriginalTitle')
             if series_id not in series_dict:
                 series_dict[series_id] = {"Name": series_name}
             else:
@@ -114,7 +119,6 @@ def sort_series_and_movies(input_filename, output_filename):
 
     result = []
 
-    # Add Specials (Season 0) to result
     for parent_id, seasons in series_dict.items():
         if "Specials" in seasons:
             special_info = {
@@ -125,7 +129,6 @@ def sort_series_and_movies(input_filename, output_filename):
             }
             result.append(special_info)
 
-    # Add other seasons and series to result
     for series_id, details in series_dict.items():
         if "Name" in details:
             series_info = {
@@ -144,7 +147,6 @@ def sort_series_and_movies(input_filename, output_filename):
 
     result.sort(key=lambda x: x['Name'])
 
-    # Add boxsets to result
     for boxset in boxsets:
         boxset_info = {
             "Id": boxset['Id'],
@@ -157,8 +159,57 @@ def sort_series_and_movies(input_filename, output_filename):
             boxset_info["Year"] = boxset["Year"]
         result.append(boxset_info)
 
+    return result
+
+def save_if_different(output_filename, new_data):
+    if os.path.exists(output_filename):
+        try:
+            with open(output_filename, 'r', encoding='utf-8') as file:
+                old_data = json.load(file)
+        except Exception as e:
+            print(f"Error loading old JSON file: {e}")
+            old_data = None
+
+        if old_data == new_data:
+            print("No changes detected, not saving the file.")
+            return
+        else:
+            print("Changes detected, saving the new file.")
+            print_changes(old_data, new_data)
+            clean_json_names(output_filename)
+            assign_images_and_update_jellyfin(output_filename, jellyfin_url, api_key)
+
+            if missing_folders:
+
+                if os.path.exists('./missing_folders.txt'):
+                    os.remove('./missing_folders.txt')
+
+                with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
+                    for missing in missing_folders:
+                        f.write(missing + "\n")
+    else:
+        print("No old file found, saving the new file.")
+
     try:
         with open(output_filename, 'w', encoding='utf-8') as outfile:
-            json.dump(result, outfile, ensure_ascii=False, indent=4)
+            json.dump(new_data, outfile, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Error saving JSON file: {e}")
+
+def print_changes(old_data, new_data):
+    changes = []
+    old_data_dict = {item['Id']: item for item in old_data}
+    new_data_dict = {item['Id']: item for item in new_data}
+
+    for new_id, new_item in new_data_dict.items():
+        if new_id not in old_data_dict:
+            changes.append(f"New item added: {new_item}")
+        elif old_data_dict[new_id] != new_item:
+            changes.append(f"Item updated: {new_item}")
+
+    for old_id in old_data_dict:
+        if old_id not in new_data_dict:
+            changes.append(f"Item removed: {old_data_dict[old_id]}")
+
+    for change in changes:
+        print(change)

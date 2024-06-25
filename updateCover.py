@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from base64 import b64encode
-from CoverCleaner import log
+
 
 with open("config.json", 'r') as file:
     data = json.load(file)
@@ -12,8 +12,7 @@ api_key = data["api_key"]
 
 # Define paths and directories
 cover_dir = './Cover'
-shows_dir = os.path.join(cover_dir, 'Poster')
-movies_dir = os.path.join(cover_dir, 'Poster')
+poster_dir = os.path.join(cover_dir, 'Poster')
 collections_dir = os.path.join(cover_dir, 'Collections')
 
 missing_folders = []
@@ -51,7 +50,7 @@ def clean_json_names(json_filename):
 def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
     global missing_folders  # Ensure we are using the global missing_folders variable
 
-    json_path = os.path.join(os.getcwd(), json_filename)
+    json_path = os.path.join(json_filename)
 
     # Ensure the JSON file exists
     if not os.path.exists(json_path):
@@ -65,7 +64,8 @@ def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
     # Process each series or movie in the JSON file
     for item in json_data:
         item_name = item.get('Name').strip()
-        item_original_title = item.get('OriginalTitle', item_name).strip()  # Use strip() to remove leading/trailing spaces
+        item_original_title = item.get('OriginalTitle',
+                                       item_name).strip()  # Use strip() to remove leading/trailing spaces
         item_year = item.get('Year')
         item_id = item.get('Id')
         item_type = item.get('Type')
@@ -77,19 +77,18 @@ def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
         # Check if the item is a show, movie, or boxset based on the directory existence
         item_dir = None
         if item_type == "BoxSet":
+            missing_folder = f"Collection Folder: {item_name}"
+            missing_folders.append(missing_folder)
+            print(f"Collection not found for item: {missing_folder}. Skipping.")
+            continue
             item_dir = os.path.join(collections_dir, item_name)  # Check only by name without year
-        elif os.path.exists(os.path.join(shows_dir, f"{item_original_title} ({item_year})")):
-            item_dir = os.path.join(shows_dir, f"{item_original_title} ({item_year})")
-        elif os.path.exists(os.path.join(shows_dir, f"{item_name} ({item_year})")):
-            item_dir = os.path.join(shows_dir, f"{item_name} ({item_year})")
-        elif os.path.exists(os.path.join(movies_dir, f"{item_original_title} ({item_year})")):
-            item_dir = os.path.join(movies_dir, f"{item_original_title} ({item_year})")
-        elif os.path.exists(os.path.join(movies_dir, f"{item_name} ({item_year})")):
-            item_dir = os.path.join(movies_dir, f"{item_name} ({item_year})")
-        elif os.path.exists(os.path.join(collections_dir, f"{item_name}")):  # Adjusted line here
-            item_dir = os.path.join(collections_dir, f"{item_name}")
+        elif os.path.exists(os.path.join(poster_dir, f"{item_original_title} ({item_year})")):
+            item_dir = os.path.join(poster_dir, f"{item_original_title} ({item_year})")
+        elif os.path.exists(os.path.join(poster_dir, f"{item_name} ({item_year})")):
+            item_dir = os.path.join(poster_dir, f"{item_name} ({item_year})")
+
         else:
-            missing_folder = item_name if item_type == "BoxSet" else f"{item_original_title} ({item_year}) / {item_name} ({item_year})"
+            missing_folder = f"Poster Folder: {item_original_title} ({item_year}) / {item_name} ({item_year})"
             print(f"Folder not found for item: {missing_folder}. Skipping.")
             missing_folders.append(missing_folder)
             continue

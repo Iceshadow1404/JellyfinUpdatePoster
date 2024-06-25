@@ -1,13 +1,14 @@
 import os
 import time
-from threading import Thread
 import json
+import threading
 
 # Import functions from other modules
 from CoverCleaner import organize_covers
 from getIDs import start_get_and_save_series_and_movie
 from updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
 
+# Load configuration from JSON file
 with open("config.json", 'r') as file:
     data = json.load(file)
 
@@ -18,6 +19,10 @@ json_filename = 'sorted_series.json'
 
 # Directory for Raw Covers
 rawCover = "./RawCover"
+
+# Flag to stop threads
+stop_thread = threading.Event()
+
 
 # Main function for processing
 def main():
@@ -30,7 +35,7 @@ def main():
             os.remove('./missing_folders.txt')
 
         # Create new log files
-        with open('./processing.log', 'w') as f:
+        with open('./processing.log', 'w'):
             pass
 
         organize_covers()
@@ -38,26 +43,43 @@ def main():
         clean_json_names(json_filename)
         assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key)
 
-        # Save missing folders to a text file
-        with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
-            for missing in missing_folders:
-                f.write(missing + "\n")
+        # Check if missing_folders has any entries
+        if missing_folders:
+            print("Writing missing folders to file...")
+            with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
+                for missing in missing_folders:
+                    f.write(missing + "\n")
+        else:
+            print("No missing folders to write.")
 
     except Exception as e:
         print(f"Error in main function: {str(e)}")
 
+
 # Function to check Raw Cover directory every 10 seconds
 def check_raw_cover():
-    while True:
+    while not stop_thread.is_set():
         try:
             if os.listdir(rawCover):
+                print("Found new Files")
                 main()
         except Exception as e:
             print(f"Error checking raw cover: {str(e)}")
-        time.sleep(10)  # Wait for 10 seconds
+        time.sleep(30)
+    print("Checker thread stopped.")
+
 
 # Main program entry point
 if __name__ == '__main__':
-    # Start a thread to continuously check the Raw Cover directory
-    checker_thread = Thread(target=check_raw_cover)
+    checker_thread = threading.Thread(target=check_raw_cover)
     checker_thread.start()
+
+    try:
+        while not stop_thread.is_set():
+            start_get_and_save_series_and_movie(api_key, jellyfin_url)
+            time.sleep(30)
+    except KeyboardInterrupt:
+        print("Main program is closing...")
+        stop_thread.set()
+        checker_thread.join()
+        print("Checker thread has been terminated.")
