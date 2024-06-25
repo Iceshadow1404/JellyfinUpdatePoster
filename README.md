@@ -34,6 +34,6 @@ Checks Jellyfin every 30sec for new Items
 ## Current Limitations: No support for Season Images outside of zip files. 
 
 
-## How to use
+## How to use:
 
 Start the script again with `python main.py` and add .zip or single images files into the RawCover Folder
