@@ -1,4 +1,4 @@
 {
-  "jellyfin_url": "", // IMPORTANT Remove the last / at the End of the URL it should look like this "http://localhost:8096" 
+  "jellyfin_url": "your_jellyfin_IP:PORT, // IMPORTANT Remove the last / at the End of the URL it should look like this http://localhost:8096",
   "api_key": ""
 }
