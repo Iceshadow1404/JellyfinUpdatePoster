@@ -1,4 +1,4 @@
 {
-  "jellyfin_url": "",
+  "jellyfin_url": "", // IMPORTANT Remove the last / at the End of the URL it should look like this "http://localhost:8096" 
   "api_key": ""
 }
