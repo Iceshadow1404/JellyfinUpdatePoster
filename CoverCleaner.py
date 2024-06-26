@@ -44,7 +44,12 @@ def process_zip_file(zip_path):
             is_series = any(re.match(r'.*Season (\d+)', filename) or "Specials" in filename for filename in extracted_files)
             has_collection = any("Collection" in filename or "Collections" in filename for filename in extracted_files)
 
+            processed_files = set()
+
             for filename in extracted_files:
+                if filename in processed_files:
+                    continue
+
                 file_info = zip_ref.getinfo(filename)
                 file_ext = Path(filename).suffix.lower()
 
@@ -69,7 +74,7 @@ def process_zip_file(zip_path):
 
                             target_path = os.path.join(series_dir, target_filename)
 
-                            if os.path.exists(target_path):
+                            if os.path.exists(target_path) and target_path not in processed_files:
                                 # Move existing file to ./Replaced
                                 replaced_subdir = os.path.join(replaced_dir, f"{series_name} ({series_year})")
                                 if not os.path.exists(replaced_subdir):
@@ -78,10 +83,12 @@ def process_zip_file(zip_path):
                                 replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
                                 shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
                                 log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
+                                processed_files.add(target_path)
 
                             with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
                                 shutil.copyfileobj(source, target)
                                 log(f"Processed: {filename} -> {series_dir}/{target_filename}", details=f"{series_dir}/{target_filename}")
+                                processed_files.add(target_path)
 
                     else:
                         movie_match = re.match(r'(.+?) \((\d{4})\)', filename)
@@ -98,7 +105,7 @@ def process_zip_file(zip_path):
 
                             target_path = os.path.join(movie_dir, target_filename)
 
-                            if os.path.exists(target_path):
+                            if os.path.exists(target_path) and target_path not in processed_files:
                                 # Move existing file to ./Replaced
                                 replaced_subdir = os.path.join(replaced_dir, f"{movie_name} ({movie_year})")
                                 if not os.path.exists(replaced_subdir):
@@ -107,16 +114,21 @@ def process_zip_file(zip_path):
                                 replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
                                 shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
                                 log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
+                                processed_files.add(target_path)
 
                             with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
                                 shutil.copyfileobj(source, target)
                                 log(f"Processed: {filename} -> {movie_dir}/{target_filename}", details=f"{movie_dir}/{target_filename}")
+                                processed_files.add(target_path)
 
                 else:
                     log(f"Ignored file: {filename} (not a supported image format)", success=False)
 
                 if has_collection:
                     for filename in extracted_files:
+                        if filename in processed_files:
+                            continue
+
                         if "Collection" in filename or "Collections" in filename:
                             collection_match = re.match(r'(.+?) Collection', filename)
                             if collection_match:
@@ -126,7 +138,7 @@ def process_zip_file(zip_path):
                                 target_filename = 'poster.jpg'
                                 target_path = os.path.join(collection_dir, target_filename)
 
-                                if os.path.exists(target_path):
+                                if os.path.exists(target_path) and target_path not in processed_files:
                                     # Move existing file to ./Replaced
                                     replaced_subdir = os.path.join(replaced_dir, collection_name)
                                     if not os.path.exists(replaced_subdir):
@@ -135,11 +147,12 @@ def process_zip_file(zip_path):
                                     replaced_filename = generate_unique_filename(replaced_subdir, target_filename)
                                     shutil.move(target_path, os.path.join(replaced_subdir, replaced_filename))
                                     log(f"Moved existing file: {target_path} -> {replaced_subdir}/{replaced_filename}")
+                                    processed_files.add(target_path)
 
                                 with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
                                     shutil.copyfileobj(source, target)
-                                    log(f"Processed: {filename} -> {collection_dir}/{target_filename}",
-                                        details=f"{collection_dir}/{target_filename}")
+                                    log(f"Processed: {filename} -> {collection_dir}/{target_filename}", details=f"{collection_dir}/{target_filename}")
+                                    processed_files.add(target_path)
 
     except zipfile.BadZipFile:
         log(f"Error: {zip_path} is not a valid zip file.", success=False)
