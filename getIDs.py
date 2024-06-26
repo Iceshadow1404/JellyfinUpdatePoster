@@ -175,16 +175,18 @@ def save_if_different(filename, new_data):
     try:
         if old_data is not None and len(old_data) == len(new_data):
             print(f"No changes detected, not saving the file.")
+            print(f"Waiting for new Files in ./RawCover")
         else:
             print(f"Changes detected, saving the new file.")
 
+            missing_folders.clear()
             clean_json_names(output_filename)
             assign_images_and_update_jellyfin(output_filename, jellyfin_url, api_key)
 
-            if missing_folders:
-                if os.path.exists('./missing_folders.txt'):
-                    os.remove('./missing_folders.txt')
+            if os.path.exists('./missing_folders.txt'):
+                os.remove('./missing_folders.txt')
 
+            if missing_folders:
                 with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
                     for missing in missing_folders:
                         f.write(missing + "\n")

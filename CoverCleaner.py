@@ -16,11 +16,6 @@ replaced_dir = './Replaced'
 
 # Function to organize covers from a directory
 def organize_covers():
-    for dir_path in [movies_dir, shows_dir, collections_dir, consumed_dir, raw_cover_dir, replaced_dir]:
-        if not os.path.exists(dir_path):
-            os.makedirs(dir_path)
-            log(f"Created directory: {dir_path}")
-
     files_to_process = [item for item in os.listdir(raw_cover_dir) if os.path.isfile(os.path.join(raw_cover_dir, item))]
 
     if not files_to_process:

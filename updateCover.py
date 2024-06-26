@@ -3,7 +3,6 @@ import json
 import requests
 from base64 import b64encode
 
-
 with open("config.json", 'r') as file:
     data = json.load(file)
 
@@ -23,6 +22,7 @@ def clean_json_names(json_filename):
     # Ensure the JSON file exists
     if not os.path.exists(json_path):
         print(f"The JSON file {json_filename} could not be found.")
+        (print("Don't panic if this is your first time using this script; just wait 60 seconds for new instructions"))
         return
 
     # Load JSON data
@@ -73,24 +73,13 @@ def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
         item_dir = None
         if item_type == "BoxSet":
             if os.path.exists(os.path.join(collections_dir, item_name)):
-                item_dir = os.path.join(collections_dir, item_name)  # Check only by name without year
+                item_dir = os.path.join(collections_dir, item_name)
 
-                # Find main poster for the item
-                main_poster_path = None
-                for poster_filename in ['poster.png', 'poster.jpeg', 'poster.jpg', 'poster.webp']:
-                    poster_path = os.path.join(item_dir, poster_filename)
-                    if os.path.exists(poster_path):
-                        main_poster_path = poster_path
-                        break
-
-                if main_poster_path:
-                    # Update Jellyfin with main poster
-                    update_jellyfin(item_id, main_poster_path, item_name, api_key, jellyfin_url)
-                else:
-                    print(f"Main poster not found for item: {item_original_title} ({item_year})")
-                    missing_folder = f"Collection Folder: {item_name}"
-                    missing_folders.append(missing_folder)
-                    print(f"Collection not found for item: {missing_folder}. Skipping.")
+            else:
+                print(f"Collection not found for item: {item_name}. Skipping.")
+                missing_folder = f"Collection Folder: {item_name}"
+                missing_folders.append(missing_folder)
+                continue
 
         elif os.path.exists(os.path.join(poster_dir, f"{item_original_title} ({item_year})")):
             item_dir = os.path.join(poster_dir, f"{item_original_title} ({item_year})")
@@ -155,8 +144,7 @@ def assign_images_and_update_jellyfin(json_filename, jellyfin_url, api_key):
                         print(f"Invalid image data found for item - {item_original_title} ({item_year})")
 
     print(f"Processing completed for {json_filename}")
-
-
+    print("updated all posters")
 
 def update_jellyfin(id, image_path, item_name, api_key, jellyfin_url):
     endpoint = f'/Items/{id}/Images/Primary/0'
