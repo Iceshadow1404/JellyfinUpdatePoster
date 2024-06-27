@@ -32,7 +32,9 @@ def get_and_save_series_and_movies(api_key, jellyfin_url):
     params = {
         'Recursive': 'true',
         'IncludeItemTypes': 'Series,Season,Movie,BoxSet',
-        'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,Seasons,ProductionYear'  # Add OriginalTitle
+        'excludeLocationTypes': 'Virtual, Remote, Offline',
+        'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,Seasons,ProductionYear',  # Add OriginalTitle
+        'isMissing': 'False'
     }
 
     response = requests.get(url, headers=headers, params=params)
@@ -198,3 +200,5 @@ def save_if_different(filename, new_data):
             json.dump(new_data, outfile, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Error saving JSON file: {e}")
+
+start_get_and_save_series_and_movie(api_key, jellyfin_url)
