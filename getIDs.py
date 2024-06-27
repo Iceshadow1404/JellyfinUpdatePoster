@@ -200,5 +200,3 @@ def save_if_different(filename, new_data):
             json.dump(new_data, outfile, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"Error saving JSON file: {e}")
-
-start_get_and_save_series_and_movie(api_key, jellyfin_url)
