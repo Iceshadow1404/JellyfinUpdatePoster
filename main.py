@@ -78,6 +78,28 @@ def check_raw_cover():
     log("Checker thread stopped.")
 
 
+def main():
+    """Main function for processing covers and updating Jellyfin."""
+    try:
+        clean_log_files()
+        organize_covers()
+        start_get_and_save_series_and_movie()
+        clean_json_names(JSON_FILENAME)
+        missing_folders.clear()
+        assign_images_and_update_jellyfin(JSON_FILENAME)
+
+        if missing_folders:
+            log("Writing missing folders to file...")
+            with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
+                for missing in missing_folders:
+                    f.write(f"{missing}\n")
+        else:
+            log("No missing folders to write.")
+
+    except Exception as e:
+        log(f"Error in main function: {str(e)}", success=False)
+
+
 def run_program(run_main_immediately=False):
     """Main program entry point."""
     setup_directories()
@@ -98,7 +120,6 @@ def run_program(run_main_immediately=False):
         stop_thread.set()
         checker_thread.join()
         log("Checker thread has been terminated.")
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Jellyfin Cover Manager")

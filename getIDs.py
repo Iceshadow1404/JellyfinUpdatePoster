@@ -192,10 +192,12 @@ def save_if_different(filename: str, new_data: List[Dict]):
         log("Waiting for new Files in ./RawCover")
     else:
         log("Changes detected, saving the new file.")
-
-        missing_folders.clear()
-        clean_json_names(OUTPUT_FILENAME)
-        assign_images_and_update_jellyfin(OUTPUT_FILENAME)
+        try:
+            with open(filename, 'w', encoding='utf-8') as outfile:
+                json.dump(new_data, outfile, ensure_ascii=False, indent=4)
+            log(f"Successfully saved new data to {filename}")
+        except IOError as e:
+            log(f"Error saving JSON file: {e}", success=False)
 
         if os.path.exists('./missing_folders.txt'):
             os.remove('./missing_folders.txt')

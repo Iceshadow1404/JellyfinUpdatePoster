@@ -1,10 +1,12 @@
 # src/update_cover.py
 import os
 import json
+import time
 import requests
 from base64 import b64encode
 from typing import List, Dict, Tuple
 from pathlib import Path
+
 
 from src.config import JELLYFIN_URL, API_KEY
 from src.utils import log, get_content_type
@@ -19,9 +21,14 @@ def clean_json_names(json_filename: str):
     json_path = Path(json_filename)
 
     if not json_path.exists():
+        from main import main as main_function
         log(f"The JSON file {json_filename} could not be found.", success=False)
-        log("Don't panic if this is your first time using this script; just wait 60 seconds for new instructions")
-        return
+        log("Don't panic if this is your first time using this script; just wait 10 seconds for new instructions")
+        log("Waiting 10 seconds before starting main function...")
+        time.sleep(10)
+        log("Starting main function...")
+        main_function()
+        return False
 
     with json_path.open('r', encoding='utf-8') as f:
         json_data = json.load(f)
