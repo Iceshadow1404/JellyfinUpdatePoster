@@ -1,5 +1,7 @@
-import asyncio
-import aiohttp
+# src/update_cover.py
+import os
+import json
+import requests
 from base64 import b64encode
 from typing import List, Dict, Tuple
 from pathlib import Path
@@ -118,7 +120,7 @@ def find_season_image(item_dir: Path, season_image_filename: str) -> Path:
             return season_image_path
     return None
 
-async def update_jellyfin_async(session: aiohttp.ClientSession, id: str, image_path: Path, item_name: str):
+def update_jellyfin(id: str, image_path: Path, item_name: str):
     endpoint = f'/Items/{id}/Images/Primary/0'
     url = f"{JELLYFIN_URL}{endpoint}"
     headers = {
@@ -135,12 +137,12 @@ async def update_jellyfin_async(session: aiohttp.ClientSession, id: str, image_p
         image_base64 = b64encode(image_data)
 
     try:
-        async with session.post(url, headers=headers, data=image_base64) as response:
-            await response.raise_for_status()
+        response = requests.post(url, headers=headers, data=image_base64)
+        response.raise_for_status()
         log(f'Updated image for {item_name} successfully.')
-    except aiohttp.ClientResponseError as e:
-        log(f'Error updating image for {item_name}. Status Code: {e.status}', success=False)
-        log(f'Response: {e.message}', success=False)
+    except requests.RequestException as e:
+        log(f'Error updating image for {item_name}. Status Code: {e.response.status_code if e.response else "N/A"}', success=False)
+        log(f'Response: {e.response.text if e.response else "N/A"}', success=False)
 
 if __name__ == "__main__":
     # This block can be used for testing the module independently

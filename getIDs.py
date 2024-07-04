@@ -3,6 +3,7 @@ import json
 import requests
 import re
 import os
+import json
 from typing import List, Dict, Optional
 
 from src.config import JELLYFIN_URL, API_KEY

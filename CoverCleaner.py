@@ -4,6 +4,7 @@ import re
 import shutil
 from typing import List, Dict, Optional
 from PIL import Image
+import json
 
 from src.constants import RAW_COVER_DIR, COVER_DIR, CONSUMED_DIR, REPLACED_DIR, POSTER_DIR, COLLECTIONS_DIR
 from src.utils import log
