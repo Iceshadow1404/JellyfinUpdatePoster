@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 from typing import Dict
 
-from coverCleaner import organize_covers
+from CoverCleaner import organize_covers
 from getIDs import start_get_and_save_series_and_movie
 from updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
 from src.utils import log, ensure_dir
