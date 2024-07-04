@@ -1,40 +1,44 @@
-# Auto Update Posters for Jellyfin
-This tool converts .zip files from https://theposterdb.com/ into dedicated folders and updates the posters in Jellyfin.
+# Jellyfin Update Poster
 
-## Requirements: Python 3.11 or newer
+Jellyfin Update Poster is a Python-based tool that helps organize and update cover images for your Jellyfin media server. It processes cover images, organizes them into appropriate directories, and updates the Jellyfin server with the new images.
 
-Steps to install:
+## Features
 
-1. Clone this repository with `git clone https://github.com/Iceshadow1404/JellyfinUpdatePoster/`.
-2. Navigate into the folder with `cd JellyfinUpdatePoster`.
-3. Install all the required packages with `pip install Pillow requests watchdog`.
-4. Add your Jellyfin IP:PORT and API key to config.json.
-5. Start the script with `python main.py`.
-6. ## The Script might crash on the first launch but these folders should have been created:
+- Organizes cover images for movies, TV shows, and collections
+- Automatically processes new images added to the RawCover directory
+- Updates Jellyfin server with new cover images
+- Handles ZIP files containing multiple cover images
+- Handles Single image files
 
-- Cover
-  - Poster
-  - Collections
-- Consumed
-- RawCover
-- Replaced
+## Prerequisites
 
+- Python 3.7 or higher
+- Jellyfin server
+- Jellyfin API key
 
-Check the root folder for a newly created file named missing_folders.txt. You can refer to this file to see the exact names of the required folders. Note that not all folders need to be present for the script to function correctly.
+## Installation
 
-## Features:
+1. Clone the repository: `https://github.com/Iceshadow1404/JellyfinUpdatePoster`
+2. Install the required dependencies: `pip install -r requirements.txt`
+3. Open the `config.json` and edit it with your Jellyfin server URL and API key
 
-Converts and renames .zip and Single Image Files into Folders
+## Usage
 
-Auto Updates Jellyfin Posters
+1. Place your cover images or ZIP files containing cover images in the `RawCover` directory.
 
-Checks Jellyfin every 30sec for new Items 
+2. Run the main script: `python main.py` To run the main function immediately after start: `main.py --main`
 
-History Feature when poster gets replaced
+3. The script will process the images, organize them into the appropriate directories, and update your Jellyfin server.
 
-## Current Limitations: No support for Season Images outside of zip files. 
+4. Check the `processing.log` file for details on the script's operations.
 
+5. If any folders are missing, they will be listed in the `missing_folders.txt` file.
 
-## How to use:
+## Directory Structure
 
-Start the script again with `python main.py` and add .zip or single images files into the RawCover Folder
+- `RawCover`: Place new cover images or ZIP files here
+- `Cover`: Organized cover images
+  - `Poster`: Movie and TV show posters
+  - `Collections`: Collection posters
+- `Consumed`: Processed raw cover files
+- `Replaced`: Backup of replaced cover images
