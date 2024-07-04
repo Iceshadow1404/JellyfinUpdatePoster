@@ -38,9 +38,12 @@ def process_file(file_path: Path):
 
 
 def move_to_consumed(file_path: Path):
-    consumed_path = Path(CONSUMED_DIR) / file_path.name
+    consumed_dir = Path(CONSUMED_DIR)
+    consumed_dir.mkdir(parents=True, exist_ok=True)
+    new_filename = generate_unique_filename(consumed_dir, file_path.name)
+    consumed_path = consumed_dir / new_filename
     file_path.rename(consumed_path)
-
+    log(f"Moved to consumed: {file_path} -> {consumed_path}")
 
 def process_zip_file(zip_path: Path):
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
