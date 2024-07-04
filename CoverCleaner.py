@@ -63,10 +63,10 @@ def process_zip_file(zip_path: Path):
 
 def process_zip_image(zip_ref: zipfile.ZipFile, filename: str, is_series: bool, has_collection: bool,
                       processed_files: set):
-    if is_series:
-        process_series_image(zip_ref, filename, processed_files)
-    elif has_collection:
+    if has_collection:
         process_collection_image(zip_ref, filename, processed_files)
+    elif is_series:
+        process_series_image(zip_ref, filename, processed_files)
     else:
         process_movie_image(zip_ref, filename, processed_files)
 
