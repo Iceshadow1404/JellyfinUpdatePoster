@@ -42,8 +42,16 @@ def move_to_consumed(file_path: Path):
     consumed_dir.mkdir(parents=True, exist_ok=True)
     new_filename = generate_unique_filename(consumed_dir, file_path.name)
     consumed_path = consumed_dir / new_filename
-    file_path.rename(consumed_path)
-    log(f"Moved to consumed: {file_path} -> {consumed_path}")
+
+    try:
+        shutil.copy2(file_path, consumed_path)  # Copy the file
+        file_path.unlink()  # Delete the original file
+        log(f"Moved to consumed: {file_path} -> {consumed_path}")
+    except Exception as e:
+        log(f"Error moving file to consumed: {e}", success=False)
+        # If copying fails, we don't want to delete the original
+        if consumed_path.exists():
+            consumed_path.unlink()
 
 def process_zip_file(zip_path: Path):
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
