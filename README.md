@@ -7,7 +7,7 @@ Jellyfin Update Poster is a Python-based tool that helps organize and update cov
 - Organizes cover images for movies, TV shows, and collections
 - Automatically processes new images added to the RawCover directory
 - Updates Jellyfin server with new cover images
-- Handles ZIP files containing multiple cover images
+- Handles ZIP files containing multiple cover images from [ThePosterDB](https://theposterdb.com/)
 - Handles Single image files
 
 ## Prerequisites
