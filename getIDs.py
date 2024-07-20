@@ -3,8 +3,8 @@ import json
 import requests
 import re
 import os
-import json
-from typing import List, Dict, Optional
+import time
+from typing import List, Dict, Set, Tuple, Optional
 
 from src.config import JELLYFIN_URL, API_KEY
 from src.utils import log, ensure_dir
@@ -12,11 +12,30 @@ from updateCover import clean_json_names, assign_images_and_update_jellyfin, mis
 
 OUTPUT_FILENAME = 'sorted_series.json'
 RAW_FILENAME = 'raw.json'
+ID_CACHE_FILENAME = 'id_cache.json'
 
 
 def start_get_and_save_series_and_movie():
+    from main import main as main_function
     media_list = get_and_save_series_and_movies()
     if media_list:
+        new_ids, has_processing_tags = process_media_list(media_list)
+        old_ids = load_cached_ids()
+
+        if has_processing_tags:
+            log("IMDB or TVDB tags detected. Waiting 30 seconds before refreshing...")
+            time.sleep(30)
+            if os.path.exists("id_cache.json"):
+                os.remove("id_cache.json")
+            return start_get_and_save_series_and_movie()  # Restart the process
+
+        if new_ids != old_ids:
+            log("Changes in media items detected. Running main function...")
+            save_cached_ids(new_ids)
+            main_function()
+        else:
+            log("No changes detected in media items.")
+
         new_sorted_data = sort_series_and_movies(RAW_FILENAME)
         if new_sorted_data:
             save_if_different(OUTPUT_FILENAME, new_sorted_data)
@@ -72,6 +91,30 @@ def create_media_info(item: Dict) -> Dict:
 
 def clean_movie_name(name: str) -> str:
     return re.sub(r' \(\d{4}\)$', '', name)
+
+
+def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool]:
+    new_ids = set()
+    has_processing_tags = False
+    for item in media_list:
+        new_ids.add(item['Id'])
+        if 'Name' in item and (
+                re.search(r'\[imdbid-tt\d+\]', item['Name']) or re.search(r'\[tvdbid-\d+\]', item['Name'])):
+            has_processing_tags = True
+            log(f"Processing tag found in: {item['Name']}")
+    return new_ids, has_processing_tags
+
+
+def load_cached_ids() -> Set[str]:
+    if os.path.exists(ID_CACHE_FILENAME):
+        with open(ID_CACHE_FILENAME, 'r') as f:
+            return set(json.load(f))
+    return set()
+
+
+def save_cached_ids(ids: Set[str]):
+    with open(ID_CACHE_FILENAME, 'w') as f:
+        json.dump(list(ids), f)
 
 
 def sort_series_and_movies(input_filename: str) -> Optional[List[Dict]]:
@@ -188,7 +231,6 @@ def save_if_different(filename: str, new_data: List[Dict]):
         old_data = None
 
     if old_data is not None and len(old_data) == len(new_data):
-        log("No changes detected, not saving the file.")
         log("Waiting for new Files in ./RawCover")
     else:
         log("Changes detected, saving the new file.")
@@ -206,12 +248,6 @@ def save_if_different(filename: str, new_data: List[Dict]):
             with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
                 for missing in missing_folders:
                     f.write(missing + "\n")
-
-    try:
-        with open(filename, 'w', encoding='utf-8') as outfile:
-            json.dump(new_data, outfile, ensure_ascii=False, indent=4)
-    except IOError as e:
-        log(f"Error saving JSON file: {e}", success=False)
 
 
 if __name__ == "__main__":
