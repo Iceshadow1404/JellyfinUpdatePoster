@@ -6,7 +6,7 @@ import os
 import time
 from typing import List, Dict, Set, Tuple, Optional
 
-from src.config import JELLYFIN_URL, API_KEY
+from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, ensure_dir
 from updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
 

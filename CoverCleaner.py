@@ -8,6 +8,7 @@ import json
 
 from src.constants import RAW_COVER_DIR, COVER_DIR, CONSUMED_DIR, REPLACED_DIR, POSTER_DIR, COLLECTIONS_DIR
 from src.utils import log
+from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 
 
 def organize_covers():

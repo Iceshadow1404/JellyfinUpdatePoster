@@ -6,6 +6,7 @@ import threading
 import argparse
 from pathlib import Path
 from typing import Dict
+from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 
 try:
     from CoverCleaner import organize_covers

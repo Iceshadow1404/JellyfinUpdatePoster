@@ -4,18 +4,52 @@ import json
 import time
 import requests
 from base64 import b64encode
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from pathlib import Path
+from difflib import SequenceMatcher
 
-
-from src.config import JELLYFIN_URL, API_KEY
+from src.config import TMDB_API_KEY
+from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, get_content_type
+
+# File to store the sorted series data
+SORTED_SERIES_FILE = 'sorted_series.json'
+
 
 COVER_DIR = Path('./Cover')
 POSTER_DIR = COVER_DIR / 'Poster'
 COLLECTIONS_DIR = COVER_DIR / 'Collections'
 
 missing_folders: List[str] = []
+
+def string_similarity(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def get_english_title(title, year, media_type='movie'):
+    url = f"https://api.themoviedb.org/3/search/{media_type}"
+    params = {
+        "api_key": TMDB_API_KEY,
+        "query": title,
+        "year": year,
+        "language": "en-US"
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        results = response.json().get("results", [])
+        if results:
+            # Sort results by popularity (assuming more popular results are more likely to be correct)
+            sorted_results = sorted(results, key=lambda x: x.get('popularity', 0), reverse=True)
+
+            for result in sorted_results[:3]:  # Check top 3 results
+                result_title = result['title'] if media_type == 'movie' else result['name']
+                result_year = result['release_date'][:4] if media_type == 'movie' else result['first_air_date'][:4]
+
+                # Check if the result is in English and matches the year
+                if result_year == str(year) and all(ord(c) < 128 for c in result_title):
+                    return result_title
+
+    return None  # Return None if no suitable English title is found
 
 def clean_json_names(json_filename: str):
     json_path = Path(json_filename)
@@ -58,8 +92,15 @@ def assign_images_and_update_jellyfin(json_filename: str):
     for item in json_data:
         process_item(item)
 
+    with json_path.open('w', encoding='utf-8') as f:
+        json.dump(json_data, f, indent=4)
+
+    log(f"Processing completed for {json_filename}")
+    log("Updated all posters and added English titles where applicable")
+
     log(f"Processing completed for {json_filename}")
     log("Updated all posters")
+
 
 def process_item(item: Dict):
     item_name = item.get('Name', '').strip()
@@ -68,13 +109,23 @@ def process_item(item: Dict):
     item_id = item.get('Id')
     item_type = item.get('Type')
 
-    if not all([item_original_title, item_year, item_id]):
-        log(f"Invalid data found for item: {item}. Skipping.", success=False)
-        return
+    # Check if EnglishTitle is missing or invalid
+    if 'EnglishTitle' not in item or not all(ord(c) < 128 for c in item['EnglishTitle']):
+        if USE_TMDB:  # Use the imported USE_TMDB instead of config.get()
+            media_type = 'tv' if any(key.startswith('Season') for key in item) else 'movie'
+            english_title = get_english_title(item_original_title, item_year, media_type)
+            if english_title:
+                item['EnglishTitle'] = english_title
+                # Save the updated item immediately
+                update_sorted_series_item(item)
+        else:
+            log(f"TMDB lookup disabled. Skipping English title retrieval for {item_name}", success=False)
 
-    item_dir = get_item_directory(item_type, item_name, item_original_title, item_year)
+    # Process posters and seasons
+    item_dir = get_item_directory(item_type, item_name, item_original_title, item_year, item.get('EnglishTitle'))
     if not item_dir:
-        return
+        log(f"Directory not found for item: {item_original_title} ({item_year})", success=False)
+        return item
 
     main_poster_path = find_main_poster(item_dir)
     if main_poster_path:
@@ -84,21 +135,78 @@ def process_item(item: Dict):
 
     process_seasons(item, item_dir, item_original_title, item_year)
 
-def get_item_directory(item_type: str, item_name: str, item_original_title: str, item_year: str) -> Path:
+    return item
+
+def update_sorted_series_item(updated_item):
+    sorted_series_path = Path(SORTED_SERIES_FILE)
+    if not sorted_series_path.exists():
+        log(f"The file {SORTED_SERIES_FILE} could not be found.", success=False)
+        return
+
+    with sorted_series_path.open('r', encoding='utf-8') as f:
+        sorted_series = json.load(f)
+
+    for i, item in enumerate(sorted_series):
+        if item['Id'] == updated_item['Id']:
+            sorted_series[i] = updated_item
+            break
+
+    with sorted_series_path.open('w', encoding='utf-8') as f:
+        json.dump(sorted_series, f, indent=4, ensure_ascii=False)
+
+def update_sorted_series():
+    sorted_series_path = Path(SORTED_SERIES_FILE)
+
+    if not sorted_series_path.exists():
+        log(f"The file {SORTED_SERIES_FILE} could not be found.", success=False)
+        return
+
+    with sorted_series_path.open('r', encoding='utf-8') as f:
+        sorted_series = json.load(f)
+
+    updated_series = [process_item(item) for item in sorted_series]
+
+    # Save the updated data back to the file
+    with sorted_series_path.open('w', encoding='utf-8') as f:
+        json.dump(updated_series, f, indent=4, ensure_ascii=False)
+
+    log(f"Processing completed for {SORTED_SERIES_FILE}")
+    log("Updated English titles where applicable")
+
+
+def get_item_directory(item_type: str, item_name: str, item_original_title: str, item_year: str,
+                       english_title: Optional[str] = None) -> Optional[Path]:
     if item_type == "BoxSet":
-        item_dir = COLLECTIONS_DIR / item_name
+        # For collections, we don't use the year
+        possible_dirs = [
+            COLLECTIONS_DIR / item_name,
+            COLLECTIONS_DIR / item_original_title
+        ]
+        if english_title:
+            possible_dirs.insert(0, COLLECTIONS_DIR / english_title)
     else:
-        item_dir = POSTER_DIR / f"{item_original_title} ({item_year})"
-        if not item_dir.exists():
-            item_dir = POSTER_DIR / f"{item_name} ({item_year})"
+        # For movies and series, we use the year
+        possible_dirs = [
+            POSTER_DIR / f"{item_original_title} ({item_year})",
+            POSTER_DIR / f"{item_name} ({item_year})"
+        ]
+        if english_title:
+            possible_dirs.insert(0, POSTER_DIR / f"{english_title} ({item_year})")
 
-    if not item_dir.exists():
-        missing_folder = f"Folder not found: {item_dir}"
-        log(missing_folder, success=False)
-        missing_folders.append(missing_folder)
-        return None
+    for dir in possible_dirs:
+        if dir.exists():
+            return dir
 
-    return item_dir
+    # If we reach here, no directory was found
+    base_dir = COLLECTIONS_DIR if item_type == "BoxSet" else POSTER_DIR
+    if item_type == "BoxSet":
+        missing_folder = f"Folder not found: {base_dir / item_name}"
+    else:
+        missing_folder = f"Folder not found: {base_dir / f'{item_original_title} ({item_year})'}"
+
+    log(missing_folder, success=False)
+    missing_folders.append(missing_folder)
+    return None
 
 def find_main_poster(item_dir: Path) -> Path:
     for poster_filename in ['poster.png', 'poster.jpeg', 'poster.jpg', 'poster.webp']:
