@@ -15,12 +15,26 @@ Jellyfin Update Poster is a Python-based tool that helps organize and update cov
 - Python 3.7 or higher
 - Jellyfin server
 - Jellyfin API key
+- TMDB API key (optional, for English title lookup)
 
 ## Installation
 
 1. Clone the repository: `https://github.com/Iceshadow1404/JellyfinUpdatePoster`
 2. Install the required dependencies: `pip install -r requirements.txt`
 3. Open the `config.json` and edit it with your Jellyfin server URL and API key
+4. (Optional) Add your TMDB API key to config.json if you want to use the English title lookup feature
+
+## Configuration
+Edit the config.json file to include the following: 
+```
+{
+  "jellyfin_url": "your_jellyfin_url",
+  "api_key": "your_jellyfin_api_key",
+  "tmdb_api_key": "your_tmdb_api_key",
+  "use_tmdb": true
+}
+```
+Set `use_tmdb` to `false` if you don't want to use TMDB for English title lookups.
 
 ## Usage
 
@@ -30,9 +44,11 @@ Jellyfin Update Poster is a Python-based tool that helps organize and update cov
 
 3. The script will process the images, organize them into the appropriate directories, and update your Jellyfin server.
 
-4. Check the `processing.log` file for details on the script's operations.
+4. If TMDB integration is enabled, it will attempt to fetch and use English titles for non-English content.
 
-5. If any folders are missing, they will be listed in the `missing_folders.txt` file.
+5. Check the `processing.log` file for details on the script's operations.
+
+6. If any folders are missing, they will be listed in the `missing_folders.txt` file.
 
 ## Directory Structure
 
@@ -42,3 +58,14 @@ Jellyfin Update Poster is a Python-based tool that helps organize and update cov
   - `Collections`: Collection posters
 - `Consumed`: Processed raw cover files
 - `Replaced`: Backup of replaced cover images
+
+## English Title Feature
+
+
+When enabled, the script will attempt to fetch English titles for non-English content using TMDB. This allows for easier organization and searching of content, especially for libraries with mixed-language media. The script will look for folders using both the original title and the English title (if available).
+
+## Note
+
+
+The TMDB integration and English title lookup are optional features. If you don't provide a TMDB API key or set use_tmdb to false in the config, the script will function normally without these features.
+
