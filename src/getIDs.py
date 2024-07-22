@@ -11,7 +11,7 @@ from typing import List, Dict, Set, Tuple, Optional
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, ensure_dir
 from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
-from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME
+from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISSING_FOLDER
 
 
 def start_get_and_save_series_and_movie():
@@ -31,7 +31,6 @@ def start_get_and_save_series_and_movie():
         if new_ids != old_ids:
             log("Changes in media items detected. Running main function...")
             save_cached_ids(new_ids)
-            main_function()
         else:
             log("No changes detected in media items.")
 
@@ -244,11 +243,11 @@ def save_if_different(filename: str, new_data: List[Dict]):
         except IOError as e:
             log(f"Error saving JSON file: {e}", success=False)
 
-        if os.path.exists('./missing_folders.txt'):
-            os.remove('./missing_folders.txt')
+        if os.path.exists(MISSING_FOLDER):
+            os.remove(MISSING_FOLDER)
 
         if missing_folders:
-            with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
+            with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
                 for missing in missing_folders:
                     f.write(missing + "\n")
 

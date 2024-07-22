@@ -6,7 +6,7 @@ import threading
 import argparse
 from pathlib import Path
 from typing import Dict
-from src.constants import RAW_COVER_DIR, COVER_DIR, POSTER_DIR, COLLECTIONS_DIR, CONSUMED_DIR, REPLACED_DIR, OUTPUT_FILENAME, PROCESSING_LOG
+from src.constants import *
 
 try:
     from src.CoverCleaner import organize_covers
@@ -29,7 +29,7 @@ def setup_directories():
 
 def clean_log_files():
     """Remove old log files and create new ones."""
-    log_files = [PROCESSING_LOG, './missing_folders.txt']
+    log_files = [PROCESSING_LOG, MISSING_FOLDER]
     for log_file in log_files:
         if os.path.exists(log_file):
             os.remove(log_file)
@@ -46,11 +46,13 @@ def main():
         assign_images_and_update_jellyfin(OUTPUT_FILENAME)
 
         if missing_folders:
-            with open("./missing_folders.txt", 'a', encoding='utf-8') as f:
-                for missing in missing_folders:
-                    f.write(f"{missing}\n")
+            if os.path.exists(MISSING_FOLDER):
+                with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
+                    for missing in missing_folders:
+                        f.write(f"{missing}\n")
+
         else:
-            print("No missing folders to write.")
+            log((f"No missing folders to write."), success=True)
 
     except Exception as e:
         print(f"Error in main function: {str(e)}")

@@ -91,11 +91,7 @@ def assign_images_and_update_jellyfin(json_filename: str):
     with json_path.open('w', encoding='utf-8') as f:
         json.dump(json_data, f, indent=4)
 
-    log(f"Processing completed for {json_filename}")
     log("Updated all posters and added English titles where applicable")
-
-    log(f"Processing completed for {json_filename}")
-    log("Updated all posters")
 
 
 def process_item(item: Dict):
@@ -196,6 +192,7 @@ def get_item_directory(item: Dict) -> Optional[Path]:
     if item_type == "BoxSet":
         missing_name = english_title or item_name
         missing_folder = f"Folder not found: {base_dir / missing_name}"
+
     else:
         missing_name = english_title or item_original_title
         missing_folder = f"Folder not found: {base_dir / f'{missing_name} ({item_year})'}"
