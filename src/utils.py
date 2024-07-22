@@ -1,6 +1,7 @@
 # src/utils.py
 import os
 from datetime import datetime
+from src.constants import PROCESSING_LOG
 
 
 def log(message: str, success: bool = True, details: str = None):
@@ -21,7 +22,7 @@ def log(message: str, success: bool = True, details: str = None):
 
     log_message += "\n"
 
-    with open('processing.log', 'a', encoding='utf-8') as f:
+    with open(PROCESSING_LOG, 'a', encoding='utf-8') as f:
         f.write(log_message)
 
     # Also print to console for immediate feedback
