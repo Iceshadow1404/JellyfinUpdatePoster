@@ -15,30 +15,29 @@ from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISS
 
 
 def start_get_and_save_series_and_movie():
-    from main import main as main_function
     media_list = get_and_save_series_and_movies()
     if media_list:
         new_ids, has_processing_tags = process_media_list(media_list)
         old_ids = load_cached_ids()
 
         if has_processing_tags:
-            log("IMDB or TVDB tags detected. Waiting 30 seconds before refreshing...")
+            log("IMDB or TVDB tags detected or unknown years found. Waiting 30 seconds before refreshing...")
             time.sleep(30)
-            if os.path.exists("id_cache.json"):
-                os.remove("id_cache.json")
+            if os.path.exists(ID_CACHE_FILENAME):
+                os.remove(ID_CACHE_FILENAME)
             return start_get_and_save_series_and_movie()  # Restart the process
 
         if new_ids != old_ids:
             log("Changes in media items detected. Running main function...")
+            clean_json_names(RAW_FILENAME)  # Clean the raw file first
+            new_sorted_data = sort_series_and_movies(RAW_FILENAME)
+            if new_sorted_data:
+                save_if_different(OUTPUT_FILENAME, new_sorted_data)
+            assign_images_and_update_jellyfin(OUTPUT_FILENAME)
             save_cached_ids(new_ids)
         else:
             log("No changes detected in media items.")
-
-        new_sorted_data = sort_series_and_movies(RAW_FILENAME)
-        if new_sorted_data:
-            save_if_different(OUTPUT_FILENAME, new_sorted_data)
-        else:
-            log("Failed to sort series and movies data.", success=False)
+            log("Waiting for new Files in ./RawCover")
     else:
         log("Failed to retrieve series and movies data.", success=False)
 
@@ -100,10 +99,15 @@ def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool]:
     has_processing_tags = False
     for item in media_list:
         new_ids.add(item['Id'])
-        if 'Name' in item and (
-                re.search(r'\[imdbid-tt\d+\]', item['Name']) or re.search(r'\[tvdbid-\d+\]', item['Name'])):
-            has_processing_tags = True
-            log(f"Processing tag found in: {item['Name']}")
+        if item['Type'] in ['Series', 'Movie']:
+            if 'Name' in item and (
+                    re.search(r'\[imdbid-tt\d+\]', item['Name']) or
+                    re.search(r'\[tvdbid-\d+\]', item['Name'])):
+                has_processing_tags = True
+                log(f"Processing tag found in: {item['Name']}")
+            elif item.get('Year') == 'Unknown':
+                has_processing_tags = True
+                log(f"Unknown year found for: {item['Name']}")
     return new_ids, has_processing_tags
 
 
@@ -150,10 +154,14 @@ def process_season(item: Dict, series_dict: Dict):
     if parent_id not in series_dict:
         series_dict[parent_id] = {}
 
-    if season_name == "Specials":
+    if season_name.startswith("Specials"):
         series_dict[parent_id]["Season 0"] = season_id
-    elif season_name.startswith("Season") or season_name.startswith("Partie"):
-        series_dict[parent_id][season_name] = season_id
+    else:
+        try:
+            season_number = int(season_name.split(" ")[-1])
+            series_dict[parent_id][f"Season {season_number}"] = season_id
+        except ValueError:
+            print("Could not find Season")
 
 
 def process_series_or_movie(item: Dict, series_dict: Dict):
@@ -232,9 +240,7 @@ def save_if_different(filename: str, new_data: List[Dict]):
         log(f"Error loading old JSON file: {e}", success=False)
         old_data = None
 
-    if old_data is not None and len(old_data) == len(new_data):
-        log("Waiting for new Files in ./RawCover")
-    else:
+    if old_data != new_data:
         log("Changes detected, saving the new file.")
         try:
             with open(filename, 'w', encoding='utf-8') as outfile:
@@ -246,10 +252,14 @@ def save_if_different(filename: str, new_data: List[Dict]):
         if os.path.exists(MISSING_FOLDER):
             os.remove(MISSING_FOLDER)
 
+        assign_images_and_update_jellyfin(filename)
+
         if missing_folders:
             with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
                 for missing in missing_folders:
                     f.write(missing + "\n")
+    else:
+        log("No changes detected in the data.")
 
 
 if __name__ == "__main__":
