@@ -66,6 +66,8 @@ When enabled, the script will attempt to fetch English titles for non-English co
 
 ## Note
 
-
 The TMDB integration and English title lookup are optional features. If you don't provide a TMDB API key or set use_tmdb to false in the config, the script will function normally without these features.
 
+## Rare Bug / Limitation 
+
+If you encounter a 'file name too long' error, it may be due to limitations of the ext4 file system (or similar). Consider switching to NTFS or shortening the file name or OriginalTitle in Jellyfin.
