@@ -33,7 +33,11 @@ def start_get_and_save_series_and_movie():
             new_sorted_data = sort_series_and_movies(RAW_FILENAME)
             if new_sorted_data:
                 save_if_different(OUTPUT_FILENAME, new_sorted_data)
-            assign_images_and_update_jellyfin(OUTPUT_FILENAME)
+            try:
+                assign_images_and_update_jellyfin(OUTPUT_FILENAME)
+            except OSError as exc:
+                if exc.errno == 36:
+                    log(f"Filename too long {str(exc)}", success=False)
             save_cached_ids(new_ids)
         else:
             log("No changes detected in media items.")
@@ -249,8 +253,11 @@ def save_if_different(filename: str, new_data: List[Dict]):
         if os.path.exists(MISSING_FOLDER):
             os.remove(MISSING_FOLDER)
 
-        assign_images_and_update_jellyfin(filename)
-
+        try:
+            assign_images_and_update_jellyfin(filename)
+        except OSError as exc:
+            if exc.errno == 36:
+                log(f"Filename too long {str(exc)}", success=False)
         if missing_folders:
             with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
                 for missing in missing_folders:
