@@ -105,9 +105,6 @@ def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool]:
                     re.search(r'\[tvdbid-\d+\]', item['Name'])):
                 has_processing_tags = True
                 log(f"Processing tag found in: {item['Name']}")
-            elif item.get('Year') == 'Unknown':
-                has_processing_tags = True
-                log(f"Unknown year found for: {item['Name']}")
     return new_ids, has_processing_tags
 
 
