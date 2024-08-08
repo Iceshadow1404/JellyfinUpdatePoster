@@ -62,14 +62,20 @@ def check_raw_cover():
     """Check Raw Cover directory every 10 seconds for new files."""
     while not stop_thread.is_set():
         try:
-            if any(RAW_COVER_DIR.iterdir()):
-                print("Found new Files")
-                main()
+            for file in RAW_COVER_DIR.iterdir():
+                # Check if the file size remains the same for 5 seconds
+                initial_size = file.stat().st_size
+                time.sleep(5)
+                print()
+                if file.stat().st_size == initial_size:
+                    print(f"Found new file: {file.name}")
+                    main()
+                    break
         except Exception as e:
             error_message = f"Error checking raw cover: {str(e)}"
             print(error_message)
             log(error_message, success=False)
-        time.sleep(10)
+        time.sleep(5)
     print("Checker thread stopped.")
 
 def run_program(run_main_immediately=False):
