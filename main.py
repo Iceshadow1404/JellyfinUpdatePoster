@@ -53,9 +53,10 @@ def main():
 
         else:
             log((f"No missing folders to write."), success=True)
-
+    except OSError as exc:
+        if exc.errno == 36:
+            log(f"Filename too long {str(exc)}",success=False)
     except Exception as e:
-        print(f"Error in main function: {str(e)}")
         log(f"Error in main function: {str(e)}", success=False)
 
 def check_raw_cover():
