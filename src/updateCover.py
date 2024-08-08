@@ -14,6 +14,7 @@ from src.utils import log, get_content_type
 from src.constants import COVER_DIR, POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME
 
 missing_folders: List[str] = []
+used_folders: List[Path] = []
 
 def string_similarity(a, b):
     return SequenceMatcher(None, a, b).ratio()
@@ -92,6 +93,7 @@ def assign_images_and_update_jellyfin(json_filename: str):
         json.dump(json_data, f, indent=4)
 
     log("Updated all posters and added English titles where applicable")
+    save_missing_folders()
 
 
 def process_item(item: Dict):
@@ -116,7 +118,8 @@ def process_item(item: Dict):
     if main_poster_path:
         update_jellyfin(item['Id'], main_poster_path, f"{item.get('Name')} ({item.get('Year')})")
     else:
-        log(f"Main poster not found for item: {item.get('Name')} ({item.get('Year')})", success=False)
+        log(f"Main Cover not Found for item: {item.get('Name')} ({item.get('Year')})", success=False)
+        missing_folders.append(f"Main Cover not Found: {item_dir / 'poster'}")
 
     process_seasons(item, item_dir)
 
@@ -185,6 +188,7 @@ def get_item_directory(item: Dict) -> Optional[Path]:
 
     for dir in possible_dirs:
         if dir.exists():
+            used_folders.append(dir)
             return dir
 
     # If we reach here, no directory was found
@@ -192,7 +196,6 @@ def get_item_directory(item: Dict) -> Optional[Path]:
     if item_type == "BoxSet":
         missing_name = english_title or item_name
         missing_folder = f"Folder not found: {base_dir / missing_name}"
-
     else:
         missing_name = english_title or item_original_title
         missing_folder = f"Folder not found: {base_dir / f'{missing_name} ({item_year})'}"
@@ -217,9 +220,21 @@ def process_seasons(item: Dict, item_dir: Path):
 
             if not season_image_path:
                 log(f"Season image not found for item - {item.get('Name')} ({item.get('Year')}) - {key}", success=False)
+                missing_folders.append(f"Season Cover not Found: {item_dir / season_image_filename}")
                 continue
 
             update_jellyfin(image_id, season_image_path, f"{item.get('Name')} ({item.get('Year')}) - {key}")
+
+
+def save_missing_folders():
+    all_folders = set(POSTER_DIR.glob('*')) | set(COLLECTIONS_DIR.glob('*'))
+    unused_folders = all_folders - set(used_folders)
+
+    missing_folders_file = 'missing.txt'
+    with open(missing_folders_file, 'w', encoding='utf-8') as f:
+        for folder in unused_folders:
+            f.write(f"Didn't use Folder: {folder}\n")
+    log(f"Saved missing folders to {missing_folders_file}")
 
 def find_season_image(item_dir: Path, season_image_filename: str) -> Path:
     for ext in ['png', 'jpg', 'jpeg', 'webp']:
