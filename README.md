@@ -66,6 +66,13 @@ When enabled, the script will attempt to fetch English titles for non-English co
 
 ## Note
 
-
 The TMDB integration and English title lookup are optional features. If you don't provide a TMDB API key or set use_tmdb to false in the config, the script will function normally without these features.
 
+## Rare Bug / Limitation 
+
+If the path is longer than 255 bytes, the script will crash due to file system limitation.
+
+To prevent this:
+
+- Change the name/original title in Jellyfin
+- Or switch to NTFS, because the path limit there is 255 characters.
