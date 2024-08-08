@@ -70,9 +70,4 @@ The TMDB integration and English title lookup are optional features. If you don'
 
 ## Rare Bug / Limitation 
 
-If the File Name is longer than 255 bytes, the script will crash due to file system limitation.
-
-To prevent this:
-
-- Change the name/original title in Jellyfin
-- Or switch to NTFS, because the path limit there is 255 characters.
+If you encounter a 'file name too long' error, it may be due to limitations of the ext4 file system (or similar). Consider switching to NTFS or shortening the file name or OriginalTitle in Jellyfin.
