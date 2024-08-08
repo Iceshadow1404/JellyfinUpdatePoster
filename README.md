@@ -70,7 +70,7 @@ The TMDB integration and English title lookup are optional features. If you don'
 
 ## Rare Bug / Limitation 
 
-If the path is longer than 255 bytes, the script will crash due to file system limitation.
+If the File Name is longer than 255 bytes, the script will crash due to file system limitation.
 
 To prevent this:
 
