@@ -63,7 +63,7 @@ def clean_json_names(json_filename: str):
         json.dump(json_data, f, indent=4)
 
 def clean_name(name: str) -> str:
-    return name.replace(':', '').replace('&', '').replace("'", '').replace("!", '').replace('?', '')
+    return name.replace(':', '').replace('&', '').replace("'", '').replace("!", '').replace('?', '').replace('"', "")
 
 def assign_images_and_update_jellyfin(json_filename: str):
     json_path = Path(json_filename)
