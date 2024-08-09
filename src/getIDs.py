@@ -7,6 +7,7 @@ import re
 import os
 import time
 from typing import List, Dict, Set, Tuple, Optional
+from requests.exceptions import RequestException
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, ensure_dir
@@ -52,28 +53,40 @@ def get_and_save_series_and_movies() -> Optional[List[Dict]]:
         'isMissing': 'False'
     }
 
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        if response.status_code == 401:
-            print("Invalid API Key")
-            sys.exit()
-        response.raise_for_status()
-    except requests.RequestException as e:
-        log(f"Request failed: {e}", success=False)
-        print("Check your Jellyfin IP in the config.json file")
-        sys.exit()
+    attempt = 0
+    retry_delay = 5
 
-    items = response.json().get('Items')
-    if not items:
-        log("No items found in the response", success=False)
-        return None
+    while True:
+        attempt += 1
+        try:
+            response = requests.get(url, headers=headers, params=params)
 
-    media_list = [create_media_info(item) for item in items]
+            if response.status_code == 401:
+                log("Invalid API Key. Please check your API key and try again.", success=False)
+                time.sleep(retry_delay)
+                continue
 
-    with open(RAW_FILENAME, 'w', encoding='utf-8') as f:
-        json.dump(media_list, f, ensure_ascii=False, indent=4)
+            response.raise_for_status()
 
-    return media_list
+            items = response.json().get('Items')
+            if not items:
+                log("No items found in the response", success=False)
+                time.sleep(retry_delay)
+                continue
+
+            media_list = [create_media_info(item) for item in items]
+
+            with open(RAW_FILENAME, 'w', encoding='utf-8') as f:
+                json.dump(media_list, f, ensure_ascii=False, indent=4)
+
+            return media_list
+
+        except RequestException as e:
+            log(f"Request failed (Attempt {attempt}): {e}", success=False)
+            log(f"Retrying in {retry_delay} seconds (Attempt {attempt})...")
+            time.sleep(retry_delay)
+
+    return None
 
 
 def create_media_info(item: Dict) -> Dict:
