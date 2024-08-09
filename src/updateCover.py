@@ -56,6 +56,8 @@ def clean_json_names(json_filename: str):
             series['Name'] = clean_name(series['Name'])
         if 'OriginalTitle' in series:
             series['OriginalTitle'] = clean_name(series['OriginalTitle'])
+        if 'EnglishTitle' in series:
+            series['EnglishTitle'] = clean_name(series['EnglishTitle'])
 
     with json_path.open('w', encoding='utf-8') as f:
         json.dump(json_data, f, indent=4)

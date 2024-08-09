@@ -6,11 +6,62 @@ import shutil
 from typing import List, Dict, Optional
 from PIL import Image
 import json
+from datetime import datetime
 
 from src.constants import RAW_COVER_DIR, COVER_DIR, CONSUMED_DIR, REPLACED_DIR, POSTER_DIR, COLLECTIONS_DIR
 from src.utils import log
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 
+
+def archive_existing_content(target_dir):
+    if not os.listdir(target_dir):  # Check if the directory is empty
+        return  # If empty, nothing to archive
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    dir_name = os.path.basename(target_dir)
+    zip_filename = f"{dir_name}_{timestamp}.zip"
+    replaced_dir = os.path.join(REPLACED_DIR, dir_name)
+    os.makedirs(replaced_dir, exist_ok=True)
+    zip_path = os.path.join(replaced_dir, zip_filename)
+
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(target_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                rel_dir = os.path.relpath(root, target_dir)
+
+                # Rename the file to match the expected input format
+                if file.lower() == 'poster.jpg':
+                    new_name = f"{dir_name}.jpg"
+                elif file.lower().startswith('season'):
+                    season_match = re.search(r'season(\d+)', file.lower())
+                    if season_match:
+                        season_number = int(season_match.group(1))
+                        if season_number == 0:
+                            new_name = f"{dir_name} - Specials.jpg"
+                        else:
+                            new_name = f"{dir_name} - Season {season_number:02d}.jpg"
+                    else:
+                        new_name = file
+                else:
+                    new_name = file
+
+                if rel_dir == '.':
+                    arcname = new_name
+                else:
+                    arcname = os.path.join(rel_dir, new_name)
+
+                zipf.write(file_path, arcname)
+
+    # Delete contents of the target directory
+    for item in os.listdir(target_dir):
+        item_path = os.path.join(target_dir, item)
+        if os.path.isfile(item_path):
+            os.unlink(item_path)
+        elif os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+
+    log(f"Archived existing content: {zip_path}")
 
 def organize_covers():
     files_to_process = get_files_to_process()
@@ -91,18 +142,19 @@ def process_series_image(zip_ref: zipfile.ZipFile, filename: str, processed_file
         series_dir = Path(POSTER_DIR) / f"{series_name} ({series_year})"
         series_dir.mkdir(parents=True, exist_ok=True)
 
-        season_match = re.match(r'.*Season (\d+)', filename)
+        season_match = re.search(r'Season (\d+)', filename)
+        specials_match = re.search(r'Specials', filename)
+
         if season_match:
             season_number = int(season_match.group(1))
-            target_filename = f'Season{season_number:02}.jpg'
-        elif "Specials" in filename:
+            target_filename = f'Season{season_number:02d}.jpg'
+        elif specials_match:
             target_filename = 'Season00.jpg'
         else:
             target_filename = 'poster.jpg'
 
         target_path = series_dir / target_filename
         process_target_file(zip_ref, filename, target_path, processed_files)
-
 
 def process_movie_image(zip_ref: zipfile.ZipFile, filename: str, processed_files: set):
     movie_match = re.match(r'(.+?) \((\d{4})\)', filename)
@@ -130,23 +182,13 @@ def process_collection_image(zip_ref: zipfile.ZipFile, filename: str, processed_
 
 def process_target_file(zip_ref: zipfile.ZipFile, filename: str, target_path: Path, processed_files: set):
     if target_path.exists() and target_path not in processed_files:
-        move_to_replaced(target_path)
+        archive_existing_content(target_path.parent)
 
     with zip_ref.open(filename) as source, open(target_path, 'wb') as target:
         shutil.copyfileobj(source, target)
 
     log(f"Processed: {filename} -> {target_path}", details=str(target_path))
     processed_files.add(target_path)
-
-
-def move_to_replaced(file_path: Path):
-    replaced_subdir = Path(REPLACED_DIR) / file_path.parent.name
-    replaced_subdir.mkdir(parents=True, exist_ok=True)
-    replaced_filename = generate_unique_filename(replaced_subdir, file_path.name)
-    new_path = replaced_subdir / replaced_filename
-    file_path.rename(new_path)
-    log(f"Moved existing file: {file_path} -> {new_path}")
-
 
 def generate_unique_filename(directory: Path, filename: str) -> str:
     base_name, ext = filename.rsplit('.', 1)
@@ -163,11 +205,12 @@ def process_image_file(image_path: Path):
         movie_name, movie_year = extract_movie_info(image_path.name)
         movie_dir = Path(POSTER_DIR) / f"{movie_name} ({movie_year})"
         movie_dir.mkdir(parents=True, exist_ok=True)
+
+        # Archive existing content, if any
+        archive_existing_content(movie_dir)
+
         target_filename = f'poster{image_path.suffix.lower()}'
         target_path = movie_dir / target_filename
-
-        if target_path.exists():
-            move_to_replaced(target_path)
 
         shutil.copy2(image_path, target_path)
 
@@ -181,11 +224,14 @@ def process_image_file(image_path: Path):
 
 
 def extract_movie_info(filename: str) -> tuple:
-    movie_match = re.match(r'(.+?) \((\d{4})\)', filename)
+    # Remove any season or special information from the filename
+    clean_filename = re.sub(r' - (Season \d+|Specials)\.jpg', '', filename)
+
+    movie_match = re.match(r'(.+?) \((\d{4})\)', clean_filename)
     if movie_match:
         movie_name, movie_year = movie_match.groups()
     else:
-        movie_name = filename.split('(')[0].strip()
+        movie_name = clean_filename.split('(')[0].strip()
         movie_year = 'Unknown'
     return movie_name, movie_year
 

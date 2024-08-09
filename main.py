@@ -67,8 +67,7 @@ def check_raw_cover():
                 if file.suffix.lower() in ['.zip', '.png', '.jpg', '.jpeg', '.webp']:
                     # Check if the file size remains the same for 5 seconds
                     initial_size = file.stat().st_size
-                    time.sleep(5)
-                    print()
+                    time.sleep(1)
                     if file.stat().st_size == initial_size:
                         print(f"Found new file: {file.name}")
                         main()
