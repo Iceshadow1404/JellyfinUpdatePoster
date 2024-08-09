@@ -13,3 +13,4 @@ RAW_FILENAME = './src/raw.json'
 ID_CACHE_FILENAME = './src/id_cache.json'
 PROCESSING_LOG = "./processing.log"
 MISSING_FOLDER = "./missing_folders.txt"
+MISSING = "./missing.txt"

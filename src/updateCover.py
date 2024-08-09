@@ -48,19 +48,6 @@ def get_english_title(title, year, media_type='movie'):
 def clean_json_names(json_filename: str):
     json_path = Path(json_filename)
 
-    if not json_path.exists():
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        parent_dir = os.path.dirname(current_dir)
-        main = os.path.join(parent_dir, 'main.py')
-        from main import main as main_function
-        log(f"The JSON file {json_filename} could not be found.", success=False)
-        log("Don't panic if this is your first time using this script; just wait 10 seconds for new instructions")
-        log("Waiting 10 seconds before starting main function...")
-        time.sleep(10)
-        log("Starting main function...")
-        main_function()
-        return False
-
     with json_path.open('r', encoding='utf-8') as f:
         json_data = json.load(f)
 

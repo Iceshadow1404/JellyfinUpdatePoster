@@ -29,7 +29,7 @@ def setup_directories():
 
 def clean_log_files():
     """Remove old log files and create new ones."""
-    log_files = [PROCESSING_LOG, MISSING_FOLDER]
+    log_files = [PROCESSING_LOG, MISSING_FOLDER, MISSING]
     for log_file in log_files:
         if os.path.exists(log_file):
             os.remove(log_file)
