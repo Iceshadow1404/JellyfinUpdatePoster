@@ -13,7 +13,8 @@ try:
     from src.getIDs import start_get_and_save_series_and_movie
     from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
     from src.utils import log, ensure_dir
-    from src.config import JELLYFIN_URL, API_KEY
+    from src.config import *
+    from src.webhook import *
 
 except ImportError as e:
     print(f"Error importing modules: {e}")
