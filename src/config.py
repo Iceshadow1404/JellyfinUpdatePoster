@@ -2,6 +2,8 @@ import json
 import os
 import sys
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 def create_default_config():
     default_config = {
         "jellyfin_url": "http://your-jellyfin-url",
@@ -13,15 +15,17 @@ def create_default_config():
         "HA_webhook_url": ""
 
     }
+    config_path = os.path.join(ROOT_DIR, 'config.json')
     with open("config.json", 'w') as file:
         json.dump(default_config, file, indent=4)
 
 def load_config():
-    if not os.path.exists("config.json"):
+    config_path = os.path.join(ROOT_DIR, "config.json")
+    if not os.path.exists(config_path):
         create_default_config()
-        print("Please set your Settings in the config.json file")
+        print("Please set your Settings in the config.json file in the root directory")
         sys.exit()
-    with open("config.json", 'r') as file:
+    with open(config_path, 'r') as file:
         return json.load(file)
 
 config = load_config()

@@ -83,7 +83,9 @@ def assign_images_and_update_jellyfin(json_filename: str):
         json.dump(json_data, f, indent=4)
 
     log("Updated all posters and added English titles where applicable")
-    webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID)
+    if USE_HA:
+        webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID)
+
     save_missing_folders()
 
 
