@@ -67,7 +67,7 @@ def check_raw_cover():
             for file in RAW_COVER_DIR.iterdir():
                 if file.suffix.lower() in ['.filepart']:
                     while file.exists():
-                        print(f"Waiting for {file.name} to finish transfering...")
+                        log(f"Waiting for {file.name} to finish transfering...", success=False)
                         time.sleep(1)
                     continue
 

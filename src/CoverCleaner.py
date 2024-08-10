@@ -82,7 +82,6 @@ def organize_covers():
     for file_path in files_to_process:
         process_file(file_path)
 
-
 def get_files_to_process() -> List[Path]:
     return [item for item in Path(RAW_COVER_DIR).iterdir() if item.is_file()]
 

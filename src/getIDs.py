@@ -11,7 +11,10 @@ from requests.exceptions import RequestException
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, ensure_dir
 from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
-from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISSING_FOLDER
+from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISSING_FOLDER, RAW_COVER_DIR
+
+def is_raw_cover_dir_empty():
+    return len(os.listdir(RAW_COVER_DIR)) == 0
 
 
 def start_get_and_save_series_and_movie():
@@ -20,7 +23,8 @@ def start_get_and_save_series_and_movie():
         new_ids, has_processing_tags, items_with_tags, items_with_unknown_years = process_media_list(media_list)
         old_ids = load_cached_ids()
 
-        unknown_years = any(item.get('Year') == 'Unknown' and item['Type'] in ['Series', 'Movie'] for item in media_list)
+        unknown_years = any(
+            item.get('Year') == 'Unknown' and item['Type'] in ['Series', 'Movie'] for item in media_list)
         if has_processing_tags or unknown_years:
             log("IMDB or TVDB tags detected or unknown years found. Waiting 30 seconds before refreshing...")
             if has_processing_tags:
@@ -39,6 +43,12 @@ def start_get_and_save_series_and_movie():
         if new_ids != old_ids:
             log("Changes in media items detected. Running main function...")
             clean_json_names(RAW_FILENAME)  # Clean the raw file first
+
+            # Wait for RAW_COVER_DIR to be empty
+            while not is_raw_cover_dir_empty():
+                log(f"Waiting for {RAW_COVER_DIR} to be empty...", success=False)
+                time.sleep(10)  # Wait for 10 seconds before checking again
+
             new_sorted_data = sort_series_and_movies(RAW_FILENAME)
             if new_sorted_data:
                 save_if_different(OUTPUT_FILENAME, new_sorted_data)
@@ -48,7 +58,6 @@ def start_get_and_save_series_and_movie():
             log("Waiting for new Files in ./RawCover")
     else:
         log("Failed to retrieve series and movies data.", success=False)
-
 
 def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[List[Dict]]:
     # Useful for Debugging
@@ -111,7 +120,6 @@ def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[Lis
 
     return None
 
-
 def create_media_info(item: Dict) -> Dict:
     media_info = {
         'Id': item['Id'],
@@ -127,7 +135,6 @@ def create_media_info(item: Dict) -> Dict:
 
     return media_info
 
-
 def clean_movie_name(name: str) -> str:
     # Remove year in parentheses at the end
     name = re.sub(r' \(\d{4}\)$', '', name)
@@ -137,7 +144,6 @@ def clean_movie_name(name: str) -> str:
     name = re.sub(r'\[[^]]*\]', '', name)
     # Trim any leading or trailing whitespace
     return name.strip()
-
 
 def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool, List[str], List[str]]:
     new_ids = set()
@@ -157,18 +163,15 @@ def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool, List[str
                 items_with_unknown_years.append(f"{item['Type']}: {item['Name']} (ID: {item['Id']})")
     return new_ids, has_processing_tags, items_with_tags, items_with_unknown_years
 
-
 def load_cached_ids() -> Set[str]:
     if os.path.exists(ID_CACHE_FILENAME):
         with open(ID_CACHE_FILENAME, 'r') as f:
             return set(json.load(f))
     return set()
 
-
 def save_cached_ids(ids: Set[str]):
     with open(ID_CACHE_FILENAME, 'w', encoding="utf-8") as f:
         json.dump(list(ids), f)
-
 
 def sort_series_and_movies(input_filename: str) -> Optional[List[Dict]]:
     try:
@@ -194,7 +197,6 @@ def sort_series_and_movies(input_filename: str) -> Optional[List[Dict]]:
 
     result = create_sorted_result(series_dict, boxsets, episodes)
     return result
-
 
 def process_season(item: Dict, series_dict: Dict):
     parent_id = item.get('ParentId')
@@ -359,7 +361,6 @@ def save_if_different(filename: str, new_data: List[Dict]):
                     f.write(missing + "\n")
     else:
         log("No changes detected in the data.")
-
 
 
 if __name__ == "__main__":
