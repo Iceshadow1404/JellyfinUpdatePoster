@@ -102,7 +102,6 @@ def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[Lis
             with open(RAW_FILENAME, 'w', encoding='utf-8') as f:
                 json.dump(media_list, f, ensure_ascii=False, indent=4)
 
-            log(f"Saved {len(media_list)} items to {RAW_FILENAME}.", success=True)
             return media_list
 
         except RequestException as e:

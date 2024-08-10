@@ -59,24 +59,33 @@ def main():
     except Exception as e:
         log(f"Error in main function: {str(e)}", success=False)
 
+
 def check_raw_cover():
     """Check Raw Cover directory every 10 seconds for new files."""
     while not stop_thread.is_set():
         try:
             for file in RAW_COVER_DIR.iterdir():
+                if file.suffix.lower() in ['.filepart']:
+                    while file.exists():
+                        print(f"Waiting for {file.name} to finish transfering...")
+                        time.sleep(1)
+                    continue
+
                 if file.suffix.lower() in ['.zip', '.png', '.jpg', '.jpeg', '.webp']:
-                    # Check if the file size remains the same for 5 seconds
                     initial_size = file.stat().st_size
                     time.sleep(1)
                     if file.stat().st_size == initial_size:
                         log(f"Found new file: {file.name}")
                         main()
                         break
+
         except Exception as e:
             error_message = f"Error checking raw cover: {str(e)}"
             print(error_message)
             log(error_message, success=False)
+
         time.sleep(5)
+
     print("Checker thread stopped.")
 
 def run_program(run_main_immediately=False):
