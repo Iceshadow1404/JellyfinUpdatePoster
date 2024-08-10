@@ -17,11 +17,20 @@ from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISS
 def start_get_and_save_series_and_movie():
     media_list = get_and_save_series_and_movies()
     if media_list:
-        new_ids, has_processing_tags = process_media_list(media_list)
+        new_ids, has_processing_tags, items_with_tags, items_with_unknown_years = process_media_list(media_list)
         old_ids = load_cached_ids()
 
-        if has_processing_tags:
+        unknown_years = any(item.get('Year') == 'Unknown' and item['Type'] in ['Series', 'Movie'] for item in media_list)
+        if has_processing_tags or unknown_years:
             log("IMDB or TVDB tags detected or unknown years found. Waiting 30 seconds before refreshing...")
+            if has_processing_tags:
+                log("Items with processing tags:")
+                for item in items_with_tags:
+                    log(f"  - {item}")
+            if items_with_unknown_years:
+                log("Items with unknown years:")
+                for item in items_with_unknown_years:
+                    log(f"  - {item}")
             time.sleep(30)
             if os.path.exists(ID_CACHE_FILENAME):
                 os.remove(ID_CACHE_FILENAME)
@@ -41,7 +50,23 @@ def start_get_and_save_series_and_movie():
         log("Failed to retrieve series and movies data.", success=False)
 
 
-def get_and_save_series_and_movies() -> Optional[List[Dict]]:
+def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[List[Dict]]:
+    # Useful for Debugging
+    use_local_file = False
+
+    if use_local_file:
+        try:
+            with open(RAW_FILENAME, 'r', encoding='utf-8') as f:
+                media_list = json.load(f)
+            log(f"Loaded {len(media_list)} items from local file.", success=True)
+            return media_list
+        except FileNotFoundError:
+            log(f"Local file {RAW_FILENAME} not found.", success=False)
+            return None
+        except json.JSONDecodeError as e:
+            log(f"Error decoding JSON from local file: {e}", success=False)
+            return None
+
     headers = {'X-Emby-Token': API_KEY}
     url = f'{JELLYFIN_URL}/Items'
     params = {
@@ -77,6 +102,7 @@ def get_and_save_series_and_movies() -> Optional[List[Dict]]:
             with open(RAW_FILENAME, 'w', encoding='utf-8') as f:
                 json.dump(media_list, f, ensure_ascii=False, indent=4)
 
+            log(f"Saved {len(media_list)} items to {RAW_FILENAME}.", success=True)
             return media_list
 
         except RequestException as e:
@@ -104,12 +130,21 @@ def create_media_info(item: Dict) -> Dict:
 
 
 def clean_movie_name(name: str) -> str:
-    return re.sub(r' \(\d{4}\)$', '', name)
+    # Remove year in parentheses at the end
+    name = re.sub(r' \(\d{4}\)$', '', name)
+    # Remove any remaining parentheses and their contents
+    name = re.sub(r'\([^)]*\)', '', name)
+    # Remove any square brackets and their contents
+    name = re.sub(r'\[[^]]*\]', '', name)
+    # Trim any leading or trailing whitespace
+    return name.strip()
 
 
-def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool]:
+def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool, List[str], List[str]]:
     new_ids = set()
     has_processing_tags = False
+    items_with_tags = []
+    items_with_unknown_years = []
     for item in media_list:
         new_ids.add(item['Id'])
         if item['Type'] in ['Series', 'Movie']:
@@ -117,8 +152,11 @@ def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool]:
                     re.search(r'\[imdbid-tt\d+\]', item['Name']) or
                     re.search(r'\[tvdbid-\d+\]', item['Name'])):
                 has_processing_tags = True
-                log(f"Processing tag found in: {item['Name']}")
-    return new_ids, has_processing_tags
+                items_with_tags.append(f"{item['Type']}: {item['Name']} (ID: {item['Id']})")
+                log(f"Processing tag found in: {item['Name']} (ID: {item['Id']})")
+            if item.get('Year') == 'Unknown':
+                items_with_unknown_years.append(f"{item['Type']}: {item['Name']} (ID: {item['Id']})")
+    return new_ids, has_processing_tags, items_with_tags, items_with_unknown_years
 
 
 def load_cached_ids() -> Set[str]:
@@ -160,9 +198,13 @@ def sort_series_and_movies(input_filename: str) -> Optional[List[Dict]]:
 
 
 def process_season(item: Dict, series_dict: Dict):
-    parent_id = item['ParentId']
-    season_name = item['Name']
-    season_id = item['Id']
+    parent_id = item.get('ParentId')
+    season_name = item.get('Name', '')
+    season_id = item.get('Id')
+
+    if not parent_id or not season_id:
+        log(f"Skipping season due to missing ParentId or Id: {season_name}", success=False)
+        return
 
     if parent_id not in series_dict:
         series_dict[parent_id] = {"Seasons": {}}
@@ -174,12 +216,16 @@ def process_season(item: Dict, series_dict: Dict):
             season_number = int(season_name.split(" ")[-1])
             series_dict[parent_id]["Seasons"][f"Season {season_number}"] = {"Id": season_id}
         except ValueError:
-            print("Could not find Season")
+            log(f"Could not find Season number for: {season_name}", success=False)
 
 def process_episode(item: Dict, episodes: Dict):
-    parent_id = item['ParentId']
-    episode_id = item['Id']
-    episode_number = item['IndexNumber']
+    parent_id = item.get('ParentId')
+    episode_id = item.get('Id')
+    episode_number = item.get('IndexNumber')
+
+    if not parent_id or not episode_id or episode_number is None:
+        log(f"Skipping episode due to missing data: {item.get('Name', 'Unknown')}", success=False)
+        return
 
     if parent_id not in episodes:
         episodes[parent_id] = {}
@@ -222,29 +268,36 @@ def create_sorted_result(series_dict: Dict, boxsets: List[Dict], episodes: Dict)
 
     return result
 
+
 def create_series_info(series_id: str, details: Dict, episodes: Dict) -> Dict:
     series_info = {
         "Id": series_id,
         "Name": details["Name"]
     }
+
     if "OriginalTitle" in details:
         series_info["OriginalTitle"] = details["OriginalTitle"]
-    if "Year" in details:
+
+    if "Year" in details and details["Year"] != 'Unknown':
         series_info["Year"] = details["Year"]
 
     if details.get("Type") == "Movie":
-        # For movies, we don't include the Seasons field
         return series_info
 
-    # For TV series, include the Seasons field
     series_info["Seasons"] = {}
     for season_name, season_data in details["Seasons"].items():
         season_id = season_data["Id"]
         series_info["Seasons"][season_name] = {
             "Id": season_id
         }
+
         if season_id in episodes and episodes[season_id]:
-            series_info["Seasons"][season_name]["Episodes"] = episodes[season_id]
+            cleaned_episodes = {}
+            for ep_num, ep_id in episodes[season_id].items():
+                if ep_num not in cleaned_episodes:
+                    cleaned_episodes[ep_num] = ep_id
+
+            series_info["Seasons"][season_name]["Episodes"] = cleaned_episodes
 
     if details["Name"].upper() != details.get("OriginalTitle", "").upper():
         series_info["EnglishTitle"] = details.get("OriginalTitle", details["Name"])

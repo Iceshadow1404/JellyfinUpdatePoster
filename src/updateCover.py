@@ -206,11 +206,24 @@ def process_seasons(item: Dict, item_dir: Path):
 
 def process_episodes(item: Dict, season_data: Dict, item_dir: Path, season_number: str):
     for episode_number, episode_id in season_data.get('Episodes', {}).items():
-        episode_image_filename = f'S{season_number.zfill(2)}E{episode_number}'
+        if not episode_id:
+            log(f"Skipping episode due to missing Id: S{season_number}E{episode_number} in {item.get('Name', 'Unknown Series')}", success=False)
+            continue
+
+        try:
+            int(episode_number)  # This will raise ValueError if episode_number is not a valid integer
+        except ValueError:
+            log(f"Skipping episode due to invalid episode number: S{season_number}E{episode_number} in {item.get('Name', 'Unknown Series')}", success=False)
+            continue
+
+        episode_image_filename = f'S{season_number.zfill(2)}E{episode_number.zfill(2)}'
         episode_image_path = find_episode_image(item_dir, episode_image_filename)
 
         if episode_image_path:
-            update_jellyfin(episode_id, episode_image_path, f"{clean_name(item.get('Name'))} ({item.get('Year')}) - S{season_number}E{episode_number}", 'Primary')
+            try:
+                update_jellyfin(episode_id, episode_image_path, f"{clean_name(item.get('Name', 'Unknown'))} ({item.get('Year', 'Unknown')}) - S{season_number}E{episode_number}", 'Primary')
+            except Exception as e:
+                log(f"Error updating image for episode S{season_number}E{episode_number} in {item.get('Name', 'Unknown Series')}: {str(e)}", success=False)
 
 def find_backdrop(item_dir: Path) -> Optional[Path]:
     for ext in ['png', 'jpg', 'jpeg', 'webp']:
@@ -264,9 +277,10 @@ def update_jellyfin(id: str, image_path: Path, item_name: str, image_type: str =
         response.raise_for_status()
         log(f'Updated {image_type} image for {clean_name(item_name)} successfully.')
     except requests.RequestException as e:
-        log(f'Error updating {image_type} image for {clean_name(item_name)}. Status Code: {e.response.status_code if e.response else "N/A"}',
-            success=False)
-        log(f'Response: {e.response.text if e.response else "N/A"}', success=False)
+        status_code = e.response.status_code if e.response else "N/A"
+        response_text = e.response.text if e.response else "N/A"
+        log(f'Error updating {image_type} image for {clean_name(item_name)}. Status Code: {status_code}', success=False)
+        log(f'Response: {response_text}', success=False)
 
 if __name__ == "__main__":
     # This block can be used for testing the module independently

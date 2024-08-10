@@ -116,7 +116,6 @@ def process_zip_file(zip_path: Path):
             if file_ext in ('.png', '.jpg', '.jpeg', '.webp'):
                 process_zip_image(zip_ref, filename, is_series, has_collection, processed_files)
 
-
 def move_to_consumed(file_path: Path):
     consumed_dir = Path(CONSUMED_DIR)
     consumed_dir.mkdir(parents=True, exist_ok=True)
@@ -151,7 +150,6 @@ def process_zip_file(zip_path: Path):
             if file_ext in ('.png', '.jpg', '.jpeg', '.webp'):
                 process_zip_image(zip_ref, filename, is_series, has_collection, processed_files)
 
-
 def process_zip_image(zip_ref: zipfile.ZipFile, filename: str, is_series: bool, has_collection: bool,
                       processed_files: set):
     if "Collection" in filename:
@@ -162,7 +160,6 @@ def process_zip_image(zip_ref: zipfile.ZipFile, filename: str, is_series: bool, 
         process_series_image(zip_ref, filename, processed_files)
     else:
         process_movie_image(zip_ref, filename, processed_files)
-
 
 def process_series_image(zip_ref: zipfile.ZipFile, filename: str, processed_files: set):
     series_match = re.match(r'(.+?) \((\d{4})\)', filename)
@@ -211,7 +208,6 @@ def process_movie_image(zip_ref: zipfile.ZipFile, filename: str, processed_files
         target_path = movie_dir / target_filename
         process_target_file(zip_ref, filename, target_path, processed_files)
 
-
 def process_collection_image(zip_ref: zipfile.ZipFile, filename: str, processed_files: set):
     collection_match = re.match(r'(.+?) Collection', filename)
     if collection_match:
@@ -222,7 +218,6 @@ def process_collection_image(zip_ref: zipfile.ZipFile, filename: str, processed_
         target_filename = 'poster.jpg'
         target_path = collection_dir / target_filename
         process_target_file(zip_ref, filename, target_path, processed_files)
-
 
 def process_target_file(zip_ref: zipfile.ZipFile, filename: str, target_path: Path, processed_files: set):
     if target_path.exists() and target_path not in processed_files:
@@ -242,7 +237,6 @@ def generate_unique_filename(directory: Path, filename: str) -> str:
         new_filename = f"{base_name}_{counter}.{ext}"
         counter += 1
     return new_filename
-
 
 def process_image_file(image_path: Path):
     with Image.open(image_path) as img:
@@ -266,7 +260,6 @@ def process_image_file(image_path: Path):
 
         log(f"Processed: {image_path.name} -> {target_path}", details=str(target_path))
 
-
 def extract_movie_info(filename: str) -> tuple:
     # Remove any season or special information from the filename
     clean_filename = re.sub(r' - (Season \d+|Specials)\.jpg', '', filename)
@@ -278,7 +271,6 @@ def extract_movie_info(filename: str) -> tuple:
         movie_name = clean_filename.split('(')[0].strip()
         movie_year = 'Unknown'
     return movie_name, movie_year
-
 
 def convert_to_jpg(image_path: Path) -> Optional[Path]:
     try:
