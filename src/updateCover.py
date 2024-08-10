@@ -11,7 +11,7 @@ from difflib import SequenceMatcher
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, get_content_type
-from src.constants import COVER_DIR, POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME
+from src.constants import COVER_DIR, POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING
 
 missing_folders: List[str] = []
 used_folders: List[Path] = []
@@ -256,11 +256,10 @@ def save_missing_folders():
     all_folders = set(POSTER_DIR.glob('*')) | set(COLLECTIONS_DIR.glob('*'))
     unused_folders = all_folders - set(used_folders)
 
-    missing_folders_file = 'missing.txt'
-    with open(missing_folders_file, 'w', encoding='utf-8') as f:
+    with open(MISSING, 'w', encoding='utf-8') as f:
         for folder in unused_folders:
             f.write(f"Didn't use Folder: {folder}\n")
-    log(f"Saved missing folders to {missing_folders_file}")
+    log(f"Saved missing folders to {MISSING}")
 
 def find_season_image(item_dir: Path, season_image_filename: str) -> Path:
     for ext in ['png', 'jpg', 'jpeg', 'webp']:

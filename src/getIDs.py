@@ -276,6 +276,15 @@ def save_if_different(filename: str, new_data: List[Dict]):
         log(f"Error loading old JSON file: {e}", success=False)
         old_data = None
 
+    for series in new_data:
+        if "Seasons" in series:
+            sorted_seasons = dict(sorted(series["Seasons"].items(), key=lambda x: int(x[0].replace('Season ', ''))))
+            for season_name, season_data in sorted_seasons.items():
+                if "Episodes" in season_data:
+                    sorted_episodes = dict(sorted(season_data["Episodes"].items(), key=lambda x: int(x[0])))
+                    season_data["Episodes"] = sorted_episodes
+            series["Seasons"] = sorted_seasons
+
     if old_data != new_data:
         log("Changes detected, saving the new file.")
         try:
@@ -299,6 +308,7 @@ def save_if_different(filename: str, new_data: List[Dict]):
                     f.write(missing + "\n")
     else:
         log("No changes detected in the data.")
+
 
 
 if __name__ == "__main__":

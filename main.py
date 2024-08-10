@@ -69,7 +69,7 @@ def check_raw_cover():
                     initial_size = file.stat().st_size
                     time.sleep(1)
                     if file.stat().st_size == initial_size:
-                        print(f"Found new file: {file.name}")
+                        log(f"Found new file: {file.name}")
                         main()
                         break
         except Exception as e:
