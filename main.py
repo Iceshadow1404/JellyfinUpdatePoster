@@ -35,16 +35,11 @@ def clean_log_files():
             os.remove(log_file)
         Path(log_file).touch()
 
-
 def main():
     """Main function for processing covers and updating Jellyfin."""
     try:
         clean_log_files()
         organize_covers()
-
-        # Wait for all files to be extracted
-        wait_for_extraction_completion()
-
         start_get_and_save_series_and_movie()
         clean_json_names(OUTPUT_FILENAME)
         missing_folders.clear()
@@ -55,22 +50,15 @@ def main():
                 with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
                     for missing in missing_folders:
                         f.write(f"{missing}\n")
+
         else:
-            log("No missing folders to write.", success=True)
+            log((f"No missing folders to write."), success=True)
     except OSError as exc:
         if exc.errno == 36:
-            log(f"Filename too long {str(exc)}", success=False)
+            log(f"Filename too long {str(exc)}",success=False)
     except Exception as e:
         log(f"Error in main function: {str(e)}", success=False)
 
-def wait_for_extraction_completion():
-    """Wait until all files in RAW_COVER_DIR are processed."""
-    while True:
-        files = list(RAW_COVER_DIR.iterdir())
-        if not files:
-            break
-        log("Waiting for all files to be extracted...", success=False)
-        time.sleep(5)
 
 def check_raw_cover():
     """Check Raw Cover directory every 10 seconds for new files."""
