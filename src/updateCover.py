@@ -211,7 +211,7 @@ def process_episodes(item: Dict, season_data: Dict, item_dir: Path, season_numbe
             continue
 
         try:
-            int(episode_number)
+            int(episode_number)  # This will raise ValueError if episode_number is not a valid integer
         except ValueError:
             log(f"Skipping episode due to invalid episode number: S{season_number}E{episode_number} in {item.get('Name', 'Unknown Series')}", success=False)
             continue
