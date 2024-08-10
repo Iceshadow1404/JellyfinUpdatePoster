@@ -16,9 +16,6 @@ from src.constants import COVER_DIR, POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAM
 missing_folders: List[str] = []
 used_folders: List[Path] = []
 
-def string_similarity(a, b):
-    return SequenceMatcher(None, a, b).ratio()
-
 
 def get_english_title(title, year, media_type='movie'):
     url = f"https://api.themoviedb.org/3/search/{media_type}"
@@ -109,16 +106,17 @@ def process_item(item: Dict):
 
     main_poster_path = find_main_poster(item_dir)
     if main_poster_path:
-        update_jellyfin(item['Id'], main_poster_path, f"{item.get('Name')} ({item.get('Year')})", 'Primary')
+        update_jellyfin(item['Id'], main_poster_path, f"{clean_name(item.get('Name'))} ({item.get('Year')})", 'Primary')
     else:
-        log(f"Main Cover not Found for item: {item.get('Name')} ({item.get('Year')})", success=False)
+        log(f"Main Cover not Found for item: {clean_name(item.get('Name'))} ({item.get('Year')})", success=False)
         missing_folders.append(f"Main Cover not Found: {item_dir / 'poster'}")
 
     backdrop_path = find_backdrop(item_dir)
     if backdrop_path:
-        update_jellyfin(item['Id'], backdrop_path, f"{item.get('Name')} ({item.get('Year')})", 'Backdrop')
+        update_jellyfin(item['Id'], backdrop_path, f"{clean_name(item.get('Name'))} ({item.get('Year')})", 'Backdrop')
     else:
-        log(f"Backdrop not Found for item: {item.get('Name')} ({item.get('Year')})", success=False)
+        log(f"Backdrop not Found for item: {clean_name(item.get('Name'))} ({item.get('Year')})", success=False)
+
 
     if 'Seasons' in item:
         process_seasons(item, item_dir)
@@ -142,35 +140,15 @@ def update_sorted_series_item(updated_item):
     with sorted_series_path.open('w', encoding='utf-8') as f:
         json.dump(sorted_series, f, indent=4, ensure_ascii=False)
 
-def update_sorted_series():
-    sorted_series_path = Path(OUTPUT_FILENAME)
-
-    if not sorted_series_path.exists():
-        log(f"The file {OUTPUT_FILENAME} could not be found.", success=False)
-        return
-
-    with sorted_series_path.open('r', encoding='utf-8') as f:
-        sorted_series = json.load(f)
-
-    updated_series = [process_item(item) for item in sorted_series]
-
-    # Save the updated data back to the file
-    with sorted_series_path.open('w', encoding='utf-8') as f:
-        json.dump(updated_series, f, indent=4, ensure_ascii=False)
-
-    log(f"Processing completed for {OUTPUT_FILENAME}")
-    log("Updated English titles where applicable")
-
 
 def get_item_directory(item: Dict) -> Optional[Path]:
     item_type = item.get('Type', 'Series' if 'Seasons' in item else 'Movie')
-    item_name = item.get('Name', '').strip()
-    item_original_title = item.get('OriginalTitle', item_name).strip()
+    item_name = clean_name(item.get('Name', '').strip())
+    item_original_title = clean_name(item.get('OriginalTitle', item_name).strip())
     item_year = item.get('Year')
-    english_title = item.get('EnglishTitle')
+    english_title = clean_name(item.get('EnglishTitle', ''))
 
     if item_type == "BoxSet":
-        # For collections, we don't use the year
         possible_dirs = [
             COLLECTIONS_DIR / item_name,
             COLLECTIONS_DIR / item_original_title
@@ -178,7 +156,6 @@ def get_item_directory(item: Dict) -> Optional[Path]:
         if english_title:
             possible_dirs.insert(0, COLLECTIONS_DIR / english_title)
     else:
-        # For movies and series, we use the year
         possible_dirs = [
             POSTER_DIR / f"{item_original_title} ({item_year})",
             POSTER_DIR / f"{item_name} ({item_year})"
@@ -219,9 +196,9 @@ def process_seasons(item: Dict, item_dir: Path):
             season_image_path = find_season_image(item_dir, season_image_filename)
 
             if season_image_path:
-                update_jellyfin(season_data['Id'], season_image_path, f"{item.get('Name')} ({item.get('Year')}) - {season_name}", 'Primary')
+                update_jellyfin(season_data['Id'], season_image_path, f"{clean_name(item.get('Name'))} ({item.get('Year')}) - {season_name}", 'Primary')
             else:
-                log(f"Season image not found for item - {item.get('Name')} ({item.get('Year')}) - {season_name}", success=False)
+                log(f"Season image not found for item - {clean_name(item.get('Name'))} ({item.get('Year')}) - {season_name}", success=False)
                 missing_folders.append(f"Season Cover not Found: {item_dir / season_image_filename}")
 
             # Process episodes
@@ -233,9 +210,7 @@ def process_episodes(item: Dict, season_data: Dict, item_dir: Path, season_numbe
         episode_image_path = find_episode_image(item_dir, episode_image_filename)
 
         if episode_image_path:
-            update_jellyfin(episode_id, episode_image_path, f"{item.get('Name')} ({item.get('Year')}) - S{season_number}E{episode_number}", 'Primary')
-        else:
-            log(f"Episode image not found for item - {item.get('Name')} ({item.get('Year')}) - Season {season_number} Episode {episode_number}", success=False)
+            update_jellyfin(episode_id, episode_image_path, f"{clean_name(item.get('Name'))} ({item.get('Year')}) - S{season_number}E{episode_number}", 'Primary')
 
 def find_backdrop(item_dir: Path) -> Optional[Path]:
     for ext in ['png', 'jpg', 'jpeg', 'webp']:
@@ -259,7 +234,7 @@ def save_missing_folders():
     with open(MISSING, 'w', encoding='utf-8') as f:
         for folder in unused_folders:
             f.write(f"Didn't use Folder: {folder}\n")
-    log(f"Saved missing folders to {MISSING}")
+    log(f"Saved extra / unnecessary Folders to {MISSING}")
 
 def find_season_image(item_dir: Path, season_image_filename: str) -> Path:
     for ext in ['png', 'jpg', 'jpeg', 'webp']:
@@ -287,9 +262,10 @@ def update_jellyfin(id: str, image_path: Path, item_name: str, image_type: str =
     try:
         response = requests.post(url, headers=headers, data=image_base64)
         response.raise_for_status()
-        log(f'Updated {image_type} image for {item_name} successfully.')
+        log(f'Updated {image_type} image for {clean_name(item_name)} successfully.')
     except requests.RequestException as e:
-        log(f'Error updating {image_type} image for {item_name}. Status Code: {e.response.status_code if e.response else "N/A"}', success=False)
+        log(f'Error updating {image_type} image for {clean_name(item_name)}. Status Code: {e.response.status_code if e.response else "N/A"}',
+            success=False)
         log(f'Response: {e.response.text if e.response else "N/A"}', success=False)
 
 if __name__ == "__main__":

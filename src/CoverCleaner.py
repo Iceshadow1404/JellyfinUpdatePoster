@@ -43,6 +43,16 @@ def archive_existing_content(target_dir):
                             new_name = f"{dir_name} - Season {season_number:02d}.jpg"
                     else:
                         new_name = file
+                elif re.match(r's\d+e\d+', file.lower()):
+                    season_episode_match = re.match(r's(\d+)e(\d+)', file.lower())
+                    if season_episode_match:
+                        season_number = int(season_episode_match.group(1))
+                        episode_number = int(season_episode_match.group(2))
+                        new_name = f"{dir_name} - S{season_number:d} E{episode_number:02d}.jpg"
+                    else:
+                        new_name = file
+                elif file.lower() == 'backdrop.jpg':
+                    new_name = f"{dir_name} - Backdrop.jpg"
                 else:
                     new_name = file
 
