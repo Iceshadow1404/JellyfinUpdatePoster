@@ -47,9 +47,8 @@ def get_and_save_series_and_movies() -> Optional[List[Dict]]:
     url = f'{JELLYFIN_URL}/Items'
     params = {
         'Recursive': 'true',
-        'IncludeItemTypes': 'Series,Season,Movie,BoxSet',
-        'excludeLocationTypes': 'Virtual, Remote, Offline',
-        'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,Seasons,ProductionYear',
+        'IncludeItemTypes': 'Series,Season,Movie,BoxSet,Episode',
+        'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,Seasons,IndexNumber,ProductionYear',
         'isMissing': 'False'
     }
 
@@ -95,10 +94,13 @@ def create_media_info(item: Dict) -> Dict:
         'Name': clean_movie_name(item.get('Name', '')),
         'ParentId': item.get('ParentId'),
         'Type': item['Type'],
-        'Year': item.get('ProductionYear', 'Unknown')
+        'Year': item.get('ProductionYear', 'Unknown'),
     }
     if 'OriginalTitle' in item:
         media_info['OriginalTitle'] = item['OriginalTitle']
+    if item.get('Type') == 'Episode':
+        media_info['IndexNumber'] = item.get('IndexNumber')
+
     return media_info
 
 
@@ -142,16 +144,19 @@ def sort_series_and_movies(input_filename: str) -> Optional[List[Dict]]:
 
     series_dict = {}
     boxsets = []
+    episodes = {}
 
     for item in data:
         if item['Type'] == 'BoxSet':
             boxsets.append(item)
         elif item['Type'] == 'Season':
             process_season(item, series_dict)
+        elif item['Type'] == 'Episode':
+            process_episode(item, episodes)
         else:
             process_series_or_movie(item, series_dict)
 
-    result = create_sorted_result(series_dict, boxsets)
+    result = create_sorted_result(series_dict, boxsets, episodes)
     return result
 
 
@@ -161,27 +166,40 @@ def process_season(item: Dict, series_dict: Dict):
     season_id = item['Id']
 
     if parent_id not in series_dict:
-        series_dict[parent_id] = {}
+        series_dict[parent_id] = {"Seasons": {}}
 
     if season_name.startswith("Specials"):
-        series_dict[parent_id]["Season 0"] = season_id
+        series_dict[parent_id]["Seasons"]["Season 0"] = {"Id": season_id}
     else:
         try:
             season_number = int(season_name.split(" ")[-1])
-            series_dict[parent_id][f"Season {season_number}"] = season_id
+            series_dict[parent_id]["Seasons"][f"Season {season_number}"] = {"Id": season_id}
         except ValueError:
             print("Could not find Season")
 
+def process_episode(item: Dict, episodes: Dict):
+    parent_id = item['ParentId']
+    episode_id = item['Id']
+    episode_number = item['IndexNumber']
+
+    if parent_id not in episodes:
+        episodes[parent_id] = {}
+
+    episodes[parent_id][f"{episode_number:02d}"] = episode_id
 
 def process_series_or_movie(item: Dict, series_dict: Dict):
     series_id = item['Id']
     series_name = item.get('Name')
     original_title = item.get('OriginalTitle')
+    item_type = item.get('Type')
 
     if series_id not in series_dict:
-        series_dict[series_id] = {"Name": series_name}
+        series_dict[series_id] = {"Name": series_name, "Type": item_type}
+        if item_type != "Movie":
+            series_dict[series_id]["Seasons"] = {}
     else:
         series_dict[series_id]["Name"] = series_name
+        series_dict[series_id]["Type"] = item_type
 
     if original_title:
         series_dict[series_id]["OriginalTitle"] = original_title
@@ -189,13 +207,12 @@ def process_series_or_movie(item: Dict, series_dict: Dict):
     if 'Year' in item:
         series_dict[series_id]["Year"] = item['Year']
 
-
-def create_sorted_result(series_dict: Dict, boxsets: List[Dict]) -> List[Dict]:
+def create_sorted_result(series_dict: Dict, boxsets: List[Dict], episodes: Dict) -> List[Dict]:
     result = []
 
     for series_id, details in series_dict.items():
         if "Name" in details:
-            series_info = create_series_info(series_id, details)
+            series_info = create_series_info(series_id, details, episodes)
             result.append(series_info)
 
     result.sort(key=lambda x: x['Name'])
@@ -206,8 +223,7 @@ def create_sorted_result(series_dict: Dict, boxsets: List[Dict]) -> List[Dict]:
 
     return result
 
-
-def create_series_info(series_id: str, details: Dict) -> Dict:
+def create_series_info(series_id: str, details: Dict, episodes: Dict) -> Dict:
     series_info = {
         "Id": series_id,
         "Name": details["Name"]
@@ -217,13 +233,24 @@ def create_series_info(series_id: str, details: Dict) -> Dict:
     if "Year" in details:
         series_info["Year"] = details["Year"]
 
-    seasons = {season_name: season_id for season_name, season_id in details.items()
-               if season_name not in ["Name", "OriginalTitle", "Year"]}
-    if seasons:
-        series_info.update(seasons)
+    if details.get("Type") == "Movie":
+        # For movies, we don't include the Seasons field
+        return series_info
+
+    # For TV series, include the Seasons field
+    series_info["Seasons"] = {}
+    for season_name, season_data in details["Seasons"].items():
+        season_id = season_data["Id"]
+        series_info["Seasons"][season_name] = {
+            "Id": season_id
+        }
+        if season_id in episodes and episodes[season_id]:
+            series_info["Seasons"][season_name]["Episodes"] = episodes[season_id]
+
+    if details["Name"].upper() != details.get("OriginalTitle", "").upper():
+        series_info["EnglishTitle"] = details.get("OriginalTitle", details["Name"])
 
     return series_info
-
 
 def create_boxset_info(boxset: Dict) -> Dict:
     boxset_info = {
@@ -275,4 +302,4 @@ def save_if_different(filename: str, new_data: List[Dict]):
 
 
 if __name__ == "__main__":
-    start_get_and_save_series_and_movie()
+    get_and_save_series_and_movies()

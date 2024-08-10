@@ -76,7 +76,6 @@ def organize_covers():
 def get_files_to_process() -> List[Path]:
     return [item for item in Path(RAW_COVER_DIR).iterdir() if item.is_file()]
 
-
 def process_file(file_path: Path):
     try:
         if file_path.suffix.lower() == '.zip':
@@ -88,6 +87,24 @@ def process_file(file_path: Path):
         log(f"Processed: {file_path.name} -> Consumed/{file_path.name}")
     except Exception as e:
         log(f"Error processing {file_path.name}: {e}", success=False)
+
+def process_zip_file(zip_path: Path):
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        extracted_files = [file_info.filename for file_info in zip_ref.infolist()]
+        is_series = any(re.match(r'.*Season (\d+)', filename) or "Specials" in filename or re.match(r'.*S\d+E\d+', filename) for filename in extracted_files)
+        has_collection = any("Collection" in filename or "Collections" in filename for filename in extracted_files)
+
+        processed_files = set()
+
+        for filename in extracted_files:
+            if filename in processed_files:
+                continue
+
+            file_info = zip_ref.getinfo(filename)
+            file_ext = Path(filename).suffix.lower()
+
+            if file_ext in ('.png', '.jpg', '.jpeg', '.webp'):
+                process_zip_image(zip_ref, filename, is_series, has_collection, processed_files)
 
 
 def move_to_consumed(file_path: Path):
@@ -129,7 +146,9 @@ def process_zip_image(zip_ref: zipfile.ZipFile, filename: str, is_series: bool, 
                       processed_files: set):
     if "Collection" in filename:
         process_collection_image(zip_ref, filename, processed_files)
-    elif is_series:
+    elif "Backdrop" in filename:
+        process_backdrop_image(zip_ref, filename, processed_files)
+    elif is_series or " S" in filename and " E" in filename:
         process_series_image(zip_ref, filename, processed_files)
     else:
         process_movie_image(zip_ref, filename, processed_files)
@@ -143,17 +162,32 @@ def process_series_image(zip_ref: zipfile.ZipFile, filename: str, processed_file
         series_dir.mkdir(parents=True, exist_ok=True)
 
         season_match = re.search(r'Season (\d+)', filename)
-        specials_match = re.search(r'Specials', filename)
+        episode_match = re.search(r'S(\d+) E(\d+)', filename)
 
-        if season_match:
+        if 'Specials' in filename or 'Season 0' in filename:
+            target_filename = 'Season00.jpg'
+        elif season_match:
             season_number = int(season_match.group(1))
             target_filename = f'Season{season_number:02d}.jpg'
-        elif specials_match:
-            target_filename = 'Season00.jpg'
+        elif episode_match:
+            season_number = int(episode_match.group(1))
+            episode_number = int(episode_match.group(2))
+            target_filename = f'S{season_number:02d}E{episode_number:02d}.jpg'
         else:
             target_filename = 'poster.jpg'
 
         target_path = series_dir / target_filename
+        process_target_file(zip_ref, filename, target_path, processed_files)
+
+def process_backdrop_image(zip_ref: zipfile.ZipFile, filename: str, processed_files: set):
+    backdrop_match = re.match(r'(.+?) \((\d{4})\) - Backdrop', filename)
+    if backdrop_match:
+        name, year = backdrop_match.groups()
+        media_dir = Path(POSTER_DIR) / f"{name} ({year})"
+        media_dir.mkdir(parents=True, exist_ok=True)
+
+        target_filename = 'backdrop.jpg'
+        target_path = media_dir / target_filename
         process_target_file(zip_ref, filename, target_path, processed_files)
 
 def process_movie_image(zip_ref: zipfile.ZipFile, filename: str, processed_files: set):
