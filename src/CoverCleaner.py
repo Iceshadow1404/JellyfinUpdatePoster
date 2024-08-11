@@ -13,6 +13,18 @@ from src.utils import log
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 
 
+def is_valid_zip(zip_path: Path) -> bool:
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            # Try to read the contents of the ZIP file
+            zip_ref.testzip()
+        return True
+    except zipfile.BadZipFile:
+        return False
+    except Exception as e:
+        log(f"Error checking ZIP file {zip_path}: {e}", success=False)
+        return False
+
 def archive_existing_content(target_dir):
     if not os.listdir(target_dir):  # Check if the directory is empty
         return  # If empty, nothing to archive
@@ -89,7 +101,12 @@ def get_files_to_process() -> List[Path]:
 def process_file(file_path: Path):
     try:
         if file_path.suffix.lower() == '.zip':
-            process_zip_file(file_path)
+            if is_valid_zip(file_path):
+                process_zip_file(file_path)
+            else:
+                log(f"Invalid ZIP file detected: {file_path}. Deleting...", success=False)
+                file_path.unlink()
+                return
         elif file_path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp'):
             process_image_file(file_path)
 
