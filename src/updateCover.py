@@ -61,7 +61,7 @@ def clean_json_names(json_filename: str):
         json.dump(json_data, f, indent=4)
 
 def clean_name(name: str) -> str:
-    invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '&', "'", '!', '?', '[', ']', '!']
+    invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '&', "'", '!', '?', '[', ']', '!', '&']
     for char in invalid_chars:
         name = name.replace(char, '')
     return name

@@ -8,6 +8,9 @@ import traceback
 from pathlib import Path
 from typing import Dict
 from src.constants import *
+import tempfile
+import errno
+
 
 try:
     from src.CoverCleaner import organize_covers
@@ -39,8 +42,51 @@ def clean_log_files():
         Path(log_file).touch()
 
 
+def acquire_lock(lock_file):
+    try:
+        if os.path.exists(lock_file):
+            with open(lock_file, 'r') as f:
+                pid = int(f.read().strip())
+                if pid_exists(pid):
+                    return None
+
+        with open(lock_file, 'w') as f:
+            f.write(str(os.getpid()))
+        return lock_file
+    except IOError:
+        return None
+
+
+def release_lock(lock_file):
+    if lock_file and os.path.exists(lock_file):
+        os.remove(lock_file)
+
+def release_lock(lock_file):
+    if lock_file and os.path.exists(lock_file):
+        os.remove(lock_file)
+
+
+def pid_exists(pid):
+    """Check whether pid exists in the current process table."""
+    if pid < 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError as e:
+        return e.errno == errno.EPERM
+    else:
+        return True
+
+
 def main():
     """Main function for processing covers and updating Jellyfin."""
+    lock_file = os.path.join(tempfile.gettempdir(), 'jellyfin_cover_manager.lock')
+    lock = acquire_lock(lock_file)
+
+    if lock is None:
+        log("Another instance of the main function is already running. Skipping this execution.", success=False)
+        return
+
     try:
         clean_log_files()
         organize_covers()
@@ -68,7 +114,8 @@ def main():
             log(f"Filename too long {str(exc)}", success=False)
     except Exception as e:
         log(f"Error in main function: {str(e)}", success=False)
-
+    finally:
+        release_lock(lock)
 
 def delete_corrupted_files():
     """Delete existing files and recreate them with fresh data."""
@@ -91,10 +138,10 @@ def check_raw_cover():
     """Check Raw Cover directory every 10 seconds for new files."""
     while not stop_thread.is_set():
         try:
-            for file in RAW_COVER_DIR.iterdir():
+            for file in Path(RAW_COVER_DIR).iterdir():
                 if file.suffix.lower() in ['.filepart']:
                     while file.exists():
-                        print(f"Waiting for {file.name} to finish transfering...")
+                        print(f"Waiting for {file.name} to finish transferring...")
                         time.sleep(1)
                     continue
 
@@ -108,8 +155,7 @@ def check_raw_cover():
 
         except Exception as e:
             error_message = f"Error checking raw cover: {str(e)}"
-            if error_message:
-                log(error_message, success=False)
+            log(error_message, success=False)
 
         time.sleep(5)
 
