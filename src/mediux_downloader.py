@@ -34,6 +34,7 @@ async def async_mediux_downloader():
     for index, download_url in enumerate(download_urls):
         if not download_url.startswith("https://mediux.pro/sets"):
             log("Please select a set link instead of a collection link.")
+            print("Invialid Link:", download_url)
             sys.exit(1)
 
         log(f'Downloading set information for URL {index + 1}')
@@ -148,7 +149,7 @@ async def download_and_save_image(session: ClientSession, file_url: str, file_na
                 img.save(fp, format)
             log(f'Downloaded and saved {file_name}')
         else:
-            log(f'Failed to download {file_name}. Status code: {response.status}')
+            log(f'Failed to download {file_name}. Status code: {response.status}',success=False)
 
 if __name__ == '__main__':
     mediux_downloader()
