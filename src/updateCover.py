@@ -11,7 +11,7 @@ from difflib import SequenceMatcher
 
 from src.config import *
 from src.utils import log, get_content_type
-from src.constants import COVER_DIR, POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING
+from src.constants import COVER_DIR, POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, MEDIUX_FILE
 from src.webhook import webhook
 
 missing_folders: List[str] = []
@@ -87,7 +87,7 @@ def assign_images_and_update_jellyfin(json_filename: str):
         webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID)
 
     save_missing_folders()
-    with open("mediux.txt", 'w') as file:
+    with open(MEDIUX_FILE, 'w') as file:
         log("Reset mediux.txt")
 
 def process_item(item: Dict):

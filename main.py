@@ -42,7 +42,6 @@ def clean_log_files():
 def main():
     """Main function for processing covers and updating Jellyfin."""
     try:
-        mediux_downloader()
         clean_log_files()
         organize_covers()
         start_get_and_save_series_and_movie()
@@ -119,6 +118,10 @@ def check_raw_cover():
 def run_program(run_main_immediately=False):
     """Main program entry point."""
     setup_directories()
+    if os.path.getsize(MEDIUX_FILE) != 0:
+        mediux_downloader()
+        main()
+
 
     if run_main_immediately:
         main()
