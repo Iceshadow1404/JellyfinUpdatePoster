@@ -7,7 +7,7 @@ def webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID):
         webhook_url = f"{HA_WEBHOOK_URL}/api/webhook/{HA_WEBHOOK_ID}"
         response = requests.post(webhook_url)
         response.raise_for_status()
-        log("webhook send sucessfully!")
+        log("Webhook sent successfully!")
         if response.status_code != 200:
             print(f"Statuscode: {response.status_code}")
 
