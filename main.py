@@ -120,7 +120,6 @@ def run_program(run_main_immediately=False):
     setup_directories()
     if os.path.getsize(MEDIUX_FILE) != 0:
         mediux_downloader()
-        main()
 
 
     if run_main_immediately:

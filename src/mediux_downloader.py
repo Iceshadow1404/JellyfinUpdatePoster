@@ -10,11 +10,13 @@ import requests
 import asyncio
 import aiohttp
 from aiohttp import ClientSession
+from collections import defaultdict
+import os
+import warnings
 
 from src.utils import log
 from src.constants import RAW_COVER_DIR, MEDIUX_FILE
 from src.updateCover import clean_name
-from src.CoverCleaner import organize_covers
 
 extension = 'jpg'
 format = 'JPEG'
@@ -23,36 +25,77 @@ format = 'JPEG'
 def mediux_downloader():
     asyncio.run(async_mediux_downloader())
 
-async def async_mediux_downloader():
-    with open(MEDIUX_FILE, 'r') as file:
-        for download_url in map(str.strip, file):
-            if not download_url.startswith("https://mediux.pro/sets"):
-                log("Please select a set link instead of a collection link.")
-                sys.exit(1)
 
-            log('Downloading set information')
-            html = await download_set_html(download_url)
-            log('Extracting set information')
-            data = extract_json_segment(html)
-            set_data = data['set']
-            set_name = "Unknown Collection"
-            if set_data.get('show'):
-                set_name = set_data['show']['name']
-                try:
-                    set_name += f' ({set_data["show"]["first_air_data"][:4]})'
-                except:
-                    pass
-            elif set_data.get('collection'):
-                set_name = set_data["collection"]["collection_name"]
-            elif set_data.get('set_name'):
-                set_name = set_data['set_name']
-            set_name = clean_name(set_name)
-            files = set_data['files']
-            log(f'Saving all set images to {set_name}.zip')
-            with zipfile.ZipFile(RAW_COVER_DIR / (set_name + ".zip"), 'w') as zf:
-                await download_images(files, zf)
-            log("All images downloaded!")
-            organize_covers()
+async def async_mediux_downloader():
+    downloaded_files = defaultdict(list)
+    with open(MEDIUX_FILE, 'r') as file:
+        download_urls = list(map(str.strip, file))
+
+    for index, download_url in enumerate(download_urls):
+        if not download_url.startswith("https://mediux.pro/sets"):
+            log("Please select a set link instead of a collection link.")
+            continue
+
+        log(f'Downloading set information for URL {index + 1}')
+        html = await download_set_html(download_url)
+        log('Extracting set information')
+        data = extract_json_segment(html)
+        set_data = data['set']
+        set_name = get_set_name(set_data)
+        series_name = get_series_name(set_name)
+        set_name = clean_name(set_name)
+        files = set_data['files']
+        zip_filename = f"{set_name}_{index + 1}.zip"
+        log(f'Saving all set images to {zip_filename}')
+        with zipfile.ZipFile(RAW_COVER_DIR / zip_filename, 'w') as zf:
+            await download_images(files, zf)
+        downloaded_files[series_name].append(zip_filename)
+        log(f"All images downloaded for URL {index + 1}!")
+
+    for series_name, zip_files in downloaded_files.items():
+        if len(zip_files) > 1:
+            merge_zip_files(zip_files, series_name)
+        else:
+            log(f"Only one ZIP file for {series_name}, no merging needed.")
+
+def get_set_name(set_data):
+    if set_data.get('show'):
+        set_name = set_data['show']['name']
+        try:
+            set_name += f' ({set_data["show"]["first_air_data"][:4]})'
+        except:
+            pass
+    elif set_data.get('collection'):
+        set_name = set_data["collection"]["collection_name"]
+    elif set_data.get('set_name'):
+        set_name = set_data['set_name']
+    else:
+        set_name = "Unknown Collection"
+    return set_name
+
+def get_series_name(set_name):
+    return re.sub(r'\s*\(\d{4}\)$', '', set_name)
+
+
+def merge_zip_files(zip_files, series_name):
+    base_zip = zip_files[0]
+    output_zip = f"{series_name}_merged.zip"
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(RAW_COVER_DIR / output_zip, 'w') as zf_out:
+            for zip_file in zip_files:
+                with zipfile.ZipFile(RAW_COVER_DIR / zip_file, 'r') as zf_in:
+                    for item in zf_in.infolist():
+                        buffer = zf_in.read(item.filename)
+                        zf_out.writestr(item, buffer)
+
+    log(f"Merged ZIP file created for {series_name}: {output_zip}")
+
+    # Löschen der ursprünglichen ZIP-Dateien
+    for zip_file in zip_files:
+        os.remove(RAW_COVER_DIR / zip_file)
+    log(f"Original ZIP files for {series_name} removed.")
 
 async def download_images(file_collection, zf: zipfile.ZipFile):
     async with ClientSession() as session:
