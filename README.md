@@ -28,13 +28,18 @@ Jellyfin Update Poster is a Python-based tool that helps organize and update cov
 Edit the config.json file to include the following: 
 ```
 {
-  "jellyfin_url": "your_jellyfin_url",
-  "api_key": "your_jellyfin_api_key",
-  "tmdb_api_key": "your_tmdb_api_key",
-  "use_tmdb": true
+   "jellyfin_url": "http://your-jellyfin-url",
+    "api_key": "your-api-key",
+    "tmdb_api_key": "your-tmdb-api-key",
+    "use_tmdb": false,
+    "use_HA_webhook": false,
+    "HA_webhook_id": "your-HA-webhook_id",
+    "HA_webhook_url": "your-HA_webhook_url"
 }
 ```
 Set `use_tmdb` to `false` if you don't want to use TMDB for English title lookups.
+
+Set `use_HA_webhook` to `false` if you don't want to use the Home Assistant Webhook Feature.
 
 ## Usage
 
