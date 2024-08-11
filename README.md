@@ -73,6 +73,23 @@ When enabled, the script will attempt to fetch English titles for non-English co
 
 The TMDB integration and English title lookup are optional features. If you don't provide a TMDB API key or set use_tmdb to false in the config, the script will function normally without these features.
 
+## Known Bugs
+
+
+If u get an Error like this: 
+```
+IMDB or TVDB tags detected or unknown years found. Waiting 30 seconds before refreshing...
+
+[2024-08-11 15:06:03] SUCCESS: Items with unknown years:
+ 
+[2024-08-11 15:06:03] SUCCESS:   - Series: Star Trek: Raumschiff Voyager (ID: 82d420d4780f0f362e5066a79ee5304b)
+```
+
+Go to the corresponding TV show or movie and add the year.
+
+![](https://github.com/Iceshadow1404/JellyfinUpdatePoster/blob/main/assets/year.gif)
+
+
 ## Rare Bug / Limitation 
 
 If you encounter a 'file name too long' error, it may be due to limitations of the ext4 file system (or similar). Consider switching to NTFS or shortening the file name or OriginalTitle in Jellyfin.
