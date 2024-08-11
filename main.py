@@ -36,13 +36,21 @@ def clean_log_files():
             os.remove(log_file)
         Path(log_file).touch()
 
+
 def main():
     """Main function for processing covers and updating Jellyfin."""
     try:
         clean_log_files()
         organize_covers()
         start_get_and_save_series_and_movie()
-        clean_json_names(OUTPUT_FILENAME)
+
+        try:
+            clean_json_names(OUTPUT_FILENAME)
+        except json.JSONDecodeError as json_error:
+            log(f"JSON decoding error: {str(json_error)}. Creating new files...", success=False)
+            delete_corrupted_files()
+            return
+
         missing_folders.clear()
         assign_images_and_update_jellyfin(OUTPUT_FILENAME)
 
@@ -51,15 +59,31 @@ def main():
                 with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
                     for missing in missing_folders:
                         f.write(f"{missing}\n")
-
         else:
-            log((f"No missing folders to write."), success=True)
+            log("No missing folders to write.", success=True)
     except OSError as exc:
         if exc.errno == 36:
-            log(f"Filename too long {str(exc)}",success=False)
+            log(f"Filename too long {str(exc)}", success=False)
     except Exception as e:
         log(f"Error in main function: {str(e)}", success=False)
 
+
+def delete_corrupted_files():
+    """Delete existing files and recreate them with fresh data."""
+    files_to_recreate = [RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME]
+
+    try:
+        for file in files_to_recreate:
+            if os.path.exists(file):
+                os.remove(file)
+                log(f"Deleted existing file: {file}", success=True)
+
+        start_get_and_save_series_and_movie()
+        clean_json_names(OUTPUT_FILENAME)
+
+        log("Successfully recreated and populated new files", success=True)
+    except Exception as e:
+        log(f"Error recreating files: {str(e)}", success=False)
 
 def check_raw_cover():
     """Check Raw Cover directory every 10 seconds for new files."""
