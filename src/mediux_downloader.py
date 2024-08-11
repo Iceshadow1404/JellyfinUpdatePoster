@@ -7,9 +7,12 @@ import zipfile
 from PIL import Image
 import io
 import requests
+import asyncio
+import aiohttp
+from aiohttp import ClientSession
 
 from src.utils import log
-from src.constants import RAW_COVER_DIR
+from src.constants import RAW_COVER_DIR, MEDIUX_FILE
 from src.updateCover import clean_name
 from src.CoverCleaner import organize_covers
 
@@ -18,14 +21,17 @@ format = 'JPEG'
 
 
 def mediux_downloader():
-    with (open('mediux.txt', 'r') as file):
-        for download_url in map(str.strip,file):
+    asyncio.run(async_mediux_downloader())
+
+async def async_mediux_downloader():
+    with open(MEDIUX_FILE, 'r') as file:
+        for download_url in map(str.strip, file):
             if not download_url.startswith("https://mediux.pro/sets"):
                 log("Please select a set link instead of a collection link.")
                 sys.exit(1)
 
             log('Downloading set information')
-            html = download_set_html(download_url)
+            html = await download_set_html(download_url)
             log('Extracting set information')
             data = extract_json_segment(html)
             set_data = data['set']
@@ -40,37 +46,34 @@ def mediux_downloader():
                 set_name = set_data["collection"]["collection_name"]
             elif set_data.get('set_name'):
                 set_name = set_data['set_name']
+            set_name = clean_name(set_name)
             files = set_data['files']
             log(f'Saving all set images to {set_name}.zip')
             with zipfile.ZipFile(RAW_COVER_DIR / (set_name + ".zip"), 'w') as zf:
-                download_images(files, zf)
-            print("All images downloaded! This script is now finished!")
+                await download_images(files, zf)
+            log("All images downloaded!")
             organize_covers()
 
+async def download_images(file_collection, zf: zipfile.ZipFile):
+    async with ClientSession() as session:
+        tasks = []
+        for file in file_collection:
+            file_url = 'https://api.mediux.pro/assets/' + file["id"]
+            file_title = file['title'].strip()
+            file_title = clean_name(file_title)
+            file_name = file_title + "." + extension
+
+            log(f'Queuing download for {file_title} from {file_url}')
+            task = asyncio.create_task(download_and_save_image(session, file_url, file_name, zf))
+            tasks.append(task)
+
+        await asyncio.gather(*tasks)
 
 
-def download_images(file_collection, zf: zipfile.ZipFile):
-    for file in file_collection:
-        file_url = 'https://api.mediux.pro/assets/' + file["id"]
-        file_title = file['title'].strip()
-        file_title = clean_name(file_title)
-
-        file_name = file_title + "." + extension
-
-
-        print(f'Downloading {file_title} from {file_url}')
-        source_bytes = requests.get(file_url).content
-        img = Image.open(io.BytesIO(source_bytes))
-        if img.format != format:
-            img = img.convert('RGB')
-        with zf.open(file_name, 'w') as fp:
-            img.save(fp, format)
-
-
-def download_set_html(url):
-    data = requests.get(url).text
-    return data
-
+async def download_set_html(url):
+    async with ClientSession() as session:
+        async with session.get(url) as response:
+            return await response.text()
 
 def is_data_chunk(chunk):
     return "set_description" in chunk or "original_name" in chunk
@@ -91,6 +94,18 @@ def extract_json_segment(text):
     json_chunks = [extract_json_from_chunk(chunk) for chunk in pushes]
     return json_chunks[0]
 
+async def download_and_save_image(session: ClientSession, file_url: str, file_name: str, zf: zipfile.ZipFile):
+    async with session.get(file_url) as response:
+        if response.status == 200:
+            source_bytes = await response.read()
+            img = Image.open(io.BytesIO(source_bytes))
+            if img.format != format:
+                img = img.convert('RGB')
+            with zf.open(file_name, 'w') as fp:
+                img.save(fp, format)
+            log(f'Downloaded and saved {file_name}')
+        else:
+            log(f'Failed to download {file_name}. Status code: {response.status}')
 
 if __name__ == '__main__':
     mediux_downloader()
