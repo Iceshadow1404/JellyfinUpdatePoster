@@ -4,6 +4,7 @@ import time
 import json
 import threading
 import argparse
+import traceback
 from pathlib import Path
 from typing import Dict
 from src.constants import *
@@ -15,6 +16,7 @@ try:
     from src.utils import log, ensure_dir
     from src.config import *
     from src.webhook import *
+    from src.mediux_downloader import mediux_downloader
 
 except ImportError as e:
     print(f"Error importing modules: {e}")
@@ -40,6 +42,7 @@ def clean_log_files():
 def main():
     """Main function for processing covers and updating Jellyfin."""
     try:
+        mediux_downloader()
         clean_log_files()
         organize_covers()
         start_get_and_save_series_and_movie()
@@ -106,8 +109,8 @@ def check_raw_cover():
 
         except Exception as e:
             error_message = f"Error checking raw cover: {str(e)}"
-            print(error_message)
-            log(error_message, success=False)
+            if error_message:
+                log(error_message, success=False)
 
         time.sleep(5)
 
@@ -142,3 +145,4 @@ if __name__ == '__main__':
         run_program(run_main_immediately=args.main)
     except Exception as e:
         print(f"Unhandled exception in main script: {e}")
+        traceback.print_exc()

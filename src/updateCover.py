@@ -87,7 +87,8 @@ def assign_images_and_update_jellyfin(json_filename: str):
         webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID)
 
     save_missing_folders()
-
+    with open("mediux.txt", 'w') as file:
+        log("Reset mediux.txt")
 
 def process_item(item: Dict):
     clean_json_names(OUTPUT_FILENAME)
