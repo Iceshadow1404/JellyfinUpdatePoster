@@ -9,6 +9,7 @@ Jellyfin Update Poster is a Python-based tool that helps organize and update cov
 - Updates Jellyfin server with new cover images
 - Handles ZIP files containing multiple cover images from [ThePosterDB](https://theposterdb.com/) and [MediUX](https://mediux.pro)
 - Handles Single image files
+- Set Downloader for [MediUX](https://mediux.pro)
 
 ## Prerequisites
 
@@ -45,15 +46,17 @@ Set `use_HA_webhook` to `false` if you don't want to use the Home Assistant Webh
 
 1. Place your cover images or ZIP files containing cover images in the `RawCover` directory.
 
-2. Run the main script: `python main.py` To run the main function immediately after start: `main.py --main`
+2. Write [MediUX](https://mediux.pro) **set** links in the Mediux.txt file if you want to download covers from them. One link per line.
 
-3. The script will process the images, organize them into the appropriate directories, and update your Jellyfin server.
+3. Run the main script: `python main.py` To run the main function immediately after start: `main.py --main`
 
-4. If TMDB integration is enabled, it will attempt to fetch and use English titles for non-English content.
+4. The script will process the images, organize them into the appropriate directories, and update your Jellyfin server.
 
-5. Check the `processing.log` file for details on the script's operations.
+5. If TMDB integration is enabled, it will attempt to fetch and use English titles for non-English content.
 
-6. If any folders are missing, they will be listed in the `missing_folders.txt` file.
+6. Check the `processing.log` file for details on the script's operations.
+
+7. If any folders are missing, they will be listed in the `missing_folders.txt` file.
 
 ## Directory Structure
 
