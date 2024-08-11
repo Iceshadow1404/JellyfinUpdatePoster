@@ -38,6 +38,7 @@ Edit the config.json file to include the following:
 }
 ```
 Set `use_tmdb` to `false` if you don't want to use TMDB for English title lookups.
+
 Set `use_HA_webhook` to `false` if you don't want to use the Home Assistant Webhook Feature.
 
 ## Usage
