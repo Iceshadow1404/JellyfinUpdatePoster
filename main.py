@@ -61,11 +61,6 @@ def release_lock(lock_file):
     if lock_file and os.path.exists(lock_file):
         os.remove(lock_file)
 
-def release_lock(lock_file):
-    if lock_file and os.path.exists(lock_file):
-        os.remove(lock_file)
-
-
 def pid_exists(pid):
     """Check whether pid exists in the current process table."""
     if pid < 0:
