@@ -147,7 +147,11 @@ def check_raw_cover():
                         log(f"Found new file: {file.name}")
                         main()
                         break
-
+            if os.path.getsize(MEDIUX_FILE) != 0:
+                log("mediux.txt is not empty. Running mediux_downloader.")
+                log("waiting for additional links")
+                time.sleep(10)
+                mediux_downloader()
         except Exception as e:
             error_message = f"Error checking raw cover: {str(e)}"
             log(error_message, success=False)

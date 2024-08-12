@@ -13,6 +13,7 @@ from aiohttp import ClientSession
 from collections import defaultdict
 import os
 import warnings
+import os
 
 from src.utils import log
 from src.constants import RAW_COVER_DIR, MEDIUX_FILE
@@ -58,6 +59,9 @@ async def async_mediux_downloader():
             merge_zip_files(zip_files, series_name)
         else:
             log(f"Only one ZIP file for {series_name}, no merging needed.")
+    with open(MEDIUX_FILE, 'w') as file:
+        log("Reset mediux.txt")
+
 
 def get_set_name(set_data):
     if set_data.get('show'):
