@@ -96,3 +96,8 @@ Go to the corresponding TV show or movie and add the year.
 ## Rare Bug / Limitation 
 
 If you encounter a 'file name too long' error, it may be due to limitations of the ext4 file system (or similar). Consider switching to NTFS or shortening the file name or OriginalTitle in Jellyfin.
+
+## Credits
+
+Huge thanks to @Druidblack for the Logo
+@nea89o for the MediuxDownloader and general help 
