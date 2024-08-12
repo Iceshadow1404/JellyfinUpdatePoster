@@ -7,7 +7,7 @@ from datetime import datetime
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(ROOT_DIR, 'backups')
 SRC_DIR = os.path.join(ROOT_DIR, 'src')
-MAX_BACKUPS = 3
+MAX_BACKUPS = 5
 
 
 def create_default_config():
@@ -26,35 +26,51 @@ def create_default_config():
     return config_path
 
 
-def backup_file(file_path, backup_dir):
-    if not os.path.exists(file_path):
-        print(f"Warning: {file_path} does not exist. Skipping backup.")
-        return
+def backup_files(files_to_backup):
+    if not os.path.exists(CONFIG_DIR):
+        os.makedirs(CONFIG_DIR)
 
-    if not os.path.exists(backup_dir):
-        os.makedirs(backup_dir)
+    # Get existing backup folders
+    existing_backups = [d for d in os.listdir(CONFIG_DIR) if os.path.isdir(os.path.join(CONFIG_DIR, d)) and d.isdigit()]
+    existing_backups.sort(key=lambda x: int(x))
 
-    filename = os.path.basename(file_path)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"{filename[:-5]}_{timestamp}.json"
-    backup_path = os.path.join(backup_dir, backup_filename)
+    # Remove oldest backup if we already have MAX_BACKUPS
+    if len(existing_backups) >= MAX_BACKUPS:
+        oldest_backup = os.path.join(CONFIG_DIR, existing_backups[0])
+        shutil.rmtree(oldest_backup)
+        existing_backups.pop(0)
 
-    shutil.copy2(file_path, backup_path)
+    # Shift existing backups
+    for i in range(len(existing_backups), 0, -1):
+        old_path = os.path.join(CONFIG_DIR, str(i))
+        new_path = os.path.join(CONFIG_DIR, str(i + 1))
+        if os.path.exists(old_path):
+            if os.path.exists(new_path):
+                shutil.rmtree(new_path)
+            os.rename(old_path, new_path)
 
-    backups = sorted([f for f in os.listdir(backup_dir) if f.startswith(filename[:-5])], reverse=True)
-    for old_backup in backups[MAX_BACKUPS:]:
-        os.remove(os.path.join(backup_dir, old_backup))
+    # Create new backup folder
+    new_backup_dir = os.path.join(CONFIG_DIR, '1')
+    if os.path.exists(new_backup_dir):
+        shutil.rmtree(new_backup_dir)
+    os.makedirs(new_backup_dir)
 
+    # Backup files
+    for file_path in files_to_backup:
+        if os.path.exists(file_path):
+            shutil.copy2(file_path, new_backup_dir)
+        else:
+            print(f"Warning: {file_path} does not exist. Skipping backup.")
+
+    print(f"New backup created in folder: {new_backup_dir}")
 
 def backup_all():
-    config_path = os.path.join(ROOT_DIR, 'config.json')
-    raw_json_path = os.path.join(SRC_DIR, 'raw.json')
-    sorted_series_path = os.path.join(SRC_DIR, 'sorted_series.json')
-
-    backup_file(config_path, os.path.join(CONFIG_DIR, 'config'))
-    backup_file(raw_json_path, os.path.join(CONFIG_DIR, 'raw'))
-    backup_file(sorted_series_path, os.path.join(CONFIG_DIR, 'sorted_series'))
-
+    files_to_backup = [
+        os.path.join(ROOT_DIR, 'config.json'),
+        os.path.join(SRC_DIR, 'raw.json'),
+        os.path.join(SRC_DIR, 'sorted_series.json')
+    ]
+    backup_files(files_to_backup)
 
 def load_config():
     config_path = os.path.join(ROOT_DIR, "config.json")
