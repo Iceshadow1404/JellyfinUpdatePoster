@@ -8,6 +8,8 @@ from base64 import b64encode
 from typing import List, Dict, Tuple, Optional
 from pathlib import Path
 from difflib import SequenceMatcher
+import asyncio
+import aiohttp
 
 from src.config import *
 from src.utils import log, get_content_type
@@ -18,7 +20,7 @@ missing_folders: List[str] = []
 used_folders: List[Path] = []
 
 
-def get_english_title(title, year, media_type='movie'):
+async def get_english_title(title, year, media_type='movie'):
     url = f"https://api.themoviedb.org/3/search/{media_type}"
     params = {
         "api_key": TMDB_API_KEY,
@@ -26,22 +28,19 @@ def get_english_title(title, year, media_type='movie'):
         "year": year,
         "language": "en-US"
     }
-    response = requests.get(url, params=params)
-    if response.status_code == 200:
-        results = response.json().get("results", [])
-        if results:
-            # Sort results by popularity (assuming more popular results are more likely to be correct)
-            sorted_results = sorted(results, key=lambda x: x.get('popularity', 0), reverse=True)
-
-            for result in sorted_results[:3]:  # Check top 3 results
-                result_title = result['title'] if media_type == 'movie' else result['name']
-                result_year = result['release_date'][:4] if media_type == 'movie' else result['first_air_date'][:4]
-
-                # Check if the result is in English and matches the year
-                if result_year == str(year) and all(ord(c) < 128 for c in result_title):
-                    return result_title
-
-    return None  # Return None if no suitable English title is found
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as response:
+            if response.status == 200:
+                results = await response.json()
+                results = results.get("results", [])
+                if results:
+                    sorted_results = sorted(results, key=lambda x: x.get('popularity', 0), reverse=True)
+                    for result in sorted_results[:3]:
+                        result_title = result['title'] if media_type == 'movie' else result['name']
+                        result_year = result['release_date'][:4] if media_type == 'movie' else result['first_air_date'][:4]
+                        if result_year == str(year) and all(ord(c) < 128 for c in result_title):
+                            return result_title
+    return None
 
 def clean_json_names(json_filename: str):
     json_path = Path(json_filename)
@@ -66,7 +65,7 @@ def clean_name(name: str) -> str:
         name = name.replace(char, '')
     return name
 
-def assign_images_and_update_jellyfin(json_filename: str):
+async def assign_images_and_update_jellyfin(json_filename: str):
     json_path = Path(json_filename)
 
     if not json_path.exists():
@@ -76,59 +75,53 @@ def assign_images_and_update_jellyfin(json_filename: str):
     with json_path.open('r', encoding='utf-8') as f:
         json_data = json.load(f)
 
-    for item in json_data:
-        process_item(item)
+    tasks = [process_item(item) for item in json_data]
+    await asyncio.gather(*tasks)
 
     with json_path.open('w', encoding='utf-8') as f:
         json.dump(json_data, f, indent=4)
 
     log("Updated all posters and added English titles where applicable")
     if USE_HA:
-        webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID)
+        await webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID)
 
     save_missing_folders()
     with open(MEDIUX_FILE, 'w') as file:
         log("Reset mediux.txt")
 
-def process_item(item: Dict):
+async def process_item(item: Dict):
     clean_json_names(OUTPUT_FILENAME)
-    # Check if EnglishTitle is missing or invalid
     if 'EnglishTitle' not in item or not all(ord(c) < 128 for c in item['EnglishTitle']):
         if USE_TMDB:
             media_type = 'tv' if 'Seasons' in item else 'movie'
-            english_title = get_english_title(item.get('OriginalTitle', item.get('Name')), item.get('Year'), media_type)
+            english_title = await get_english_title(item.get('OriginalTitle', item.get('Name')), item.get('Year'), media_type)
             if english_title:
                 item['EnglishTitle'] = english_title
-                # Save the updated item immediately
-                update_sorted_series_item(item)
+                await update_sorted_series_item(item)
         else:
             log(f"TMDB lookup disabled. Skipping English title retrieval for {item.get('Name')}", success=False)
 
-    # Process posters and seasons
     item_dir = get_item_directory(item)
     if not item_dir:
         return item
 
     main_poster_path = find_main_poster(item_dir)
     if main_poster_path:
-        update_jellyfin(item['Id'], main_poster_path, f"{clean_name(item.get('Name'))} ({item.get('Year')})", 'Primary')
+        await update_jellyfin(item['Id'], main_poster_path, f"{clean_name(item.get('Name'))} ({item.get('Year')})", 'Primary')
     else:
         log(f"Main Cover not Found for item: {clean_name(item.get('Name'))} ({item.get('Year')})", success=False)
         missing_folders.append(f"Main Cover not Found: {item_dir / 'poster'}")
 
-    backdrop_path = find_backdrop(item_dir)
-    if backdrop_path:
-        update_jellyfin(item['Id'], backdrop_path, f"{clean_name(item.get('Name'))} ({item.get('Year')})", 'Backdrop')
-    else:
-        log(f"Backdrop not Found for item: {clean_name(item.get('Name'))} ({item.get('Year')})", success=False)
-
-
     if 'Seasons' in item:
-        process_seasons(item, item_dir)
+        backdrop_path = find_backdrop(item_dir)
+        if backdrop_path:
+            await update_jellyfin(item['Id'], backdrop_path, f"{clean_name(item.get('Name'))} ({item.get('Year')})", 'Backdrop')
+
+        await process_seasons(item, item_dir)
 
     return item
 
-def update_sorted_series_item(updated_item):
+async def update_sorted_series_item(updated_item):
     sorted_series_path = Path(OUTPUT_FILENAME)
     if not sorted_series_path.exists():
         log(f"The file {OUTPUT_FILENAME} could not be found.", success=False)
@@ -144,6 +137,25 @@ def update_sorted_series_item(updated_item):
 
     with sorted_series_path.open('w', encoding='utf-8') as f:
         json.dump(sorted_series, f, indent=4, ensure_ascii=False)
+
+async def process_seasons(item: Dict, item_dir: Path):
+    tasks = []
+    for season_name, season_data in item.get('Seasons', {}).items():
+        if 'Id' in season_data:
+            season_number = season_name.split(" ")[-1]
+            season_image_filename = f'Season{season_number.zfill(2)}'
+            season_image_path = find_season_image(item_dir, season_image_filename)
+
+            if season_image_path:
+                tasks.append(update_jellyfin(season_data['Id'], season_image_path, f"{clean_name(item.get('Name'))} ({item.get('Year')}) - {season_name}", 'Primary'))
+            else:
+                log(f"Season image not found for item - {clean_name(item.get('Name'))} ({item.get('Year')}) - {season_name}", success=False)
+                missing_folders.append(f"Season Cover not Found: {item_dir / season_image_filename}")
+
+            tasks.extend(await process_episodes(item, season_data, item_dir, season_number))
+
+    await asyncio.gather(*tasks)
+
 
 
 def get_item_directory(item: Dict) -> Optional[Path]:
@@ -193,30 +205,16 @@ def find_main_poster(item_dir: Path) -> Path:
             return poster_path
     return None
 
-def process_seasons(item: Dict, item_dir: Path):
-    for season_name, season_data in item.get('Seasons', {}).items():
-        if 'Id' in season_data:
-            season_number = season_name.split(" ")[-1]
-            season_image_filename = f'Season{season_number.zfill(2)}'
-            season_image_path = find_season_image(item_dir, season_image_filename)
 
-            if season_image_path:
-                update_jellyfin(season_data['Id'], season_image_path, f"{clean_name(item.get('Name'))} ({item.get('Year')}) - {season_name}", 'Primary')
-            else:
-                log(f"Season image not found for item - {clean_name(item.get('Name'))} ({item.get('Year')}) - {season_name}", success=False)
-                missing_folders.append(f"Season Cover not Found: {item_dir / season_image_filename}")
-
-            # Process episodes
-            process_episodes(item, season_data, item_dir, season_number)
-
-def process_episodes(item: Dict, season_data: Dict, item_dir: Path, season_number: str):
+async def process_episodes(item: Dict, season_data: Dict, item_dir: Path, season_number: str):
+    tasks = []
     for episode_number, episode_id in season_data.get('Episodes', {}).items():
         if not episode_id:
             log(f"Skipping episode due to missing Id: S{season_number}E{episode_number} in {item.get('Name', 'Unknown Series')}", success=False)
             continue
 
         try:
-            int(episode_number)  # This will raise ValueError if episode_number is not a valid integer
+            int(episode_number)
         except ValueError:
             log(f"Skipping episode due to invalid episode number: S{season_number}E{episode_number} in {item.get('Name', 'Unknown Series')}", success=False)
             continue
@@ -225,10 +223,9 @@ def process_episodes(item: Dict, season_data: Dict, item_dir: Path, season_numbe
         episode_image_path = find_episode_image(item_dir, episode_image_filename)
 
         if episode_image_path:
-            try:
-                update_jellyfin(episode_id, episode_image_path, f"{clean_name(item.get('Name', 'Unknown'))} ({item.get('Year', 'Unknown')}) - S{season_number}E{episode_number}", 'Primary')
-            except Exception as e:
-                log(f"Error updating image for episode S{season_number}E{episode_number} in {item.get('Name', 'Unknown Series')}: {str(e)}", success=False)
+            tasks.append(update_jellyfin(episode_id, episode_image_path, f"{clean_name(item.get('Name', 'Unknown'))} ({item.get('Year', 'Unknown')}) - S{season_number}E{episode_number}", 'Primary'))
+
+    return tasks
 
 def find_backdrop(item_dir: Path) -> Optional[Path]:
     for ext in ['png', 'jpg', 'jpeg', 'webp']:
@@ -261,7 +258,7 @@ def find_season_image(item_dir: Path, season_image_filename: str) -> Path:
             return season_image_path
     return None
 
-def update_jellyfin(id: str, image_path: Path, item_name: str, image_type: str = 'Primary'):
+async def update_jellyfin(id: str, image_path: Path, item_name: str, image_type: str = 'Primary'):
     endpoint = f'/Items/{id}/Images/{image_type}/0'
     url = f"{JELLYFIN_URL}{endpoint}"
     headers = {
@@ -277,15 +274,16 @@ def update_jellyfin(id: str, image_path: Path, item_name: str, image_type: str =
         image_data = file.read()
         image_base64 = b64encode(image_data)
 
-    try:
-        response = requests.post(url, headers=headers, data=image_base64)
-        response.raise_for_status()
-        log(f'Updated {image_type} image for {clean_name(item_name)} successfully.')
-    except requests.RequestException as e:
-        status_code = e.response.status_code if e.response else "N/A"
-        response_text = e.response.text if e.response else "N/A"
-        log(f'Error updating {image_type} image for {clean_name(item_name)}. Status Code: {status_code}', success=False)
-        log(f'Response: {response_text}', success=False)
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, headers=headers, data=image_base64) as response:
+                response.raise_for_status()
+                log(f'Updated {image_type} image for {clean_name(item_name)} successfully.')
+        except aiohttp.ClientError as e:
+            status_code = e.status if hasattr(e, 'status') else "N/A"
+            response_text = await e.text() if hasattr(e, 'text') else "N/A"
+            log(f'Error updating {image_type} image for {clean_name(item_name)}. Status Code: {status_code}', success=False)
+            log(f'Response: {response_text}', success=False)
 
 if __name__ == "__main__":
     # This block can be used for testing the module independently

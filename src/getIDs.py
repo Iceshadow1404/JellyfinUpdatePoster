@@ -7,6 +7,8 @@ import os
 import time
 from typing import List, Dict, Set, Tuple, Optional
 from requests.exceptions import RequestException
+import asyncio
+import aiohttp
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, ensure_dir
@@ -14,13 +16,14 @@ from src.updateCover import clean_json_names, assign_images_and_update_jellyfin,
 from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISSING_FOLDER
 
 
-def start_get_and_save_series_and_movie():
-    media_list = get_and_save_series_and_movies()
+async def start_get_and_save_series_and_movie():
+    media_list = await get_and_save_series_and_movies()
     if media_list:
         new_ids, has_processing_tags, items_with_tags, items_with_unknown_years = process_media_list(media_list)
         old_ids = load_cached_ids()
 
         unknown_years = any(item.get('Year') == 'Unknown' and item['Type'] in ['Series', 'Movie'] for item in media_list)
+
         if has_processing_tags or unknown_years:
             log("IMDB or TVDB tags detected or unknown years found. Waiting 30 seconds before refreshing...")
             if has_processing_tags:
@@ -31,17 +34,17 @@ def start_get_and_save_series_and_movie():
                 log("Items with unknown years:")
                 for item in items_with_unknown_years:
                     log(f"  - {item}")
-            time.sleep(30)
+            await asyncio.sleep(30)
             if os.path.exists(ID_CACHE_FILENAME):
                 os.remove(ID_CACHE_FILENAME)
-            return start_get_and_save_series_and_movie()  # Restart the process
+            return await start_get_and_save_series_and_movie()  # Restart the process
 
         if new_ids != old_ids:
             log("Changes in media items detected. Running main function...")
-            clean_json_names(RAW_FILENAME)  # Clean the raw file first
+            clean_json_names(RAW_FILENAME)
             new_sorted_data = sort_series_and_movies(RAW_FILENAME)
             if new_sorted_data:
-                save_if_different(OUTPUT_FILENAME, new_sorted_data)
+                await save_if_different(OUTPUT_FILENAME, new_sorted_data)
             save_cached_ids(new_ids)
         else:
             log("No changes detected in media items.")
@@ -50,7 +53,7 @@ def start_get_and_save_series_and_movie():
         log("Failed to retrieve series and movies data.", success=False)
 
 
-def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[List[Dict]]:
+async def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[List[Dict]]:
     # Useful for Debugging
     use_local_file = False
 
@@ -79,35 +82,35 @@ def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[Lis
     attempt = 0
     retry_delay = 5
 
-    while True:
-        attempt += 1
-        try:
-            response = requests.get(url, headers=headers, params=params)
+    async with aiohttp.ClientSession() as session:
+        while True:
+            attempt += 1
+            try:
+                async with session.get(url, headers=headers, params=params) as response:
+                    if response.status == 401:
+                        log("Invalid API Key. Please check your API key and try again.", success=False)
+                        await asyncio.sleep(retry_delay)
+                        continue
 
-            if response.status_code == 401:
-                log("Invalid API Key. Please check your API key and try again.", success=False)
+                    response.raise_for_status()
+                    data = await response.json()
+                    items = data.get('Items')
+                if not items:
+                    log("No items found in the response", success=False)
+                    time.sleep(retry_delay)
+                    continue
+
+                media_list = [create_media_info(item) for item in items]
+
+                with open(RAW_FILENAME, 'w', encoding='utf-8') as f:
+                    json.dump(media_list, f, ensure_ascii=False, indent=4)
+
+                return media_list
+
+            except RequestException as e:
+                log(f"Request failed (Attempt {attempt}): {e}", success=False)
+                log(f"Retrying in {retry_delay} seconds (Attempt {attempt})...")
                 time.sleep(retry_delay)
-                continue
-
-            response.raise_for_status()
-
-            items = response.json().get('Items')
-            if not items:
-                log("No items found in the response", success=False)
-                time.sleep(retry_delay)
-                continue
-
-            media_list = [create_media_info(item) for item in items]
-
-            with open(RAW_FILENAME, 'w', encoding='utf-8') as f:
-                json.dump(media_list, f, ensure_ascii=False, indent=4)
-
-            return media_list
-
-        except RequestException as e:
-            log(f"Request failed (Attempt {attempt}): {e}", success=False)
-            log(f"Retrying in {retry_delay} seconds (Attempt {attempt})...")
-            time.sleep(retry_delay)
 
     return None
 
@@ -316,7 +319,7 @@ def create_boxset_info(boxset: Dict) -> Dict:
     return boxset_info
 
 
-def save_if_different(filename: str, new_data: List[Dict]):
+async def save_if_different(filename: str, new_data: List[Dict]):
     try:
         if os.path.exists(filename):
             with open(filename, 'r', encoding='utf-8') as file:
@@ -349,7 +352,7 @@ def save_if_different(filename: str, new_data: List[Dict]):
             os.remove(MISSING_FOLDER)
 
         try:
-            assign_images_and_update_jellyfin(filename)
+            await assign_images_and_update_jellyfin(filename)
         except OSError as exc:
             if exc.errno == 36:
                 log(f"Filename too long {str(exc)}", success=False)
