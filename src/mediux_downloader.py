@@ -24,10 +24,7 @@ format = 'JPEG'
 
 
 def mediux_downloader():
-    if asyncio.get_event_loop().is_running():
-        return asyncio.create_task(async_mediux_downloader())
-    else:
-        asyncio.run(async_mediux_downloader())
+    asyncio.run(async_mediux_downloader())
 
 
 async def async_mediux_downloader():
@@ -38,7 +35,7 @@ async def async_mediux_downloader():
     for index, download_url in enumerate(download_urls):
         if not download_url.startswith("https://mediux.pro/sets"):
             log("Please select a set link instead of a collection link.")
-            log(f"Invialid Link: {download_url}", success=False)
+            print("Invialid Link:", download_url)
             sys.exit(1)
 
         log(f'Downloading set information for URL {index + 1}')
