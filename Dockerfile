@@ -7,7 +7,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-COPY copy_files.sh /copy_files.sh
-RUN chmod +x /copy_files.sh
 
 CMD ["/copy_files.sh", "python", "main.py"]
