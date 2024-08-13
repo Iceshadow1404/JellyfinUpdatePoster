@@ -1,7 +1,5 @@
 # src/get_ids.py
 import json
-import sys
-import requests
 import re
 import os
 import time

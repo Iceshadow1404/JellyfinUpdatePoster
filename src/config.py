@@ -2,7 +2,6 @@ import json
 import os
 import sys
 import shutil
-from datetime import datetime
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(ROOT_DIR, 'backups')

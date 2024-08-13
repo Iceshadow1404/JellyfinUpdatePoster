@@ -1,16 +1,16 @@
-import requests
 from src.utils import *
+import aiohttp
 
 
-def webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID):
+async def webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID):
     try:
         webhook_url = f"{HA_WEBHOOK_URL}/api/webhook/{HA_WEBHOOK_ID}"
-        response = requests.post(webhook_url)
-        response.raise_for_status()
-        if response.status_code == 200:
-            log("Webhook sent successfully!")
-        else:
-            print(f"Statuscode: {response.status_code}")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(webhook_url) as response:
+                if response.status == 200:
+                    log("Webhook sent successfully!")
+                else:
+                    print(f"Statuscode: {response.status}")
 
-    except requests.exceptions.RequestException as e:
+    except aiohttp.ClientError as e:
         print(f"Error while sending webhook: {e}")

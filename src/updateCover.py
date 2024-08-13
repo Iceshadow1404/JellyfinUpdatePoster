@@ -1,15 +1,11 @@
 # src/update_cover.py
-import os
 import json
-import time
-import requests
-import subprocess
 from base64 import b64encode
 from typing import List, Dict, Tuple, Optional
 from pathlib import Path
-from difflib import SequenceMatcher
 import asyncio
 import aiohttp
+import os
 
 from src.config import *
 from src.utils import log, get_content_type
@@ -86,8 +82,10 @@ async def assign_images_and_update_jellyfin(json_filename: str):
         await webhook(HA_WEBHOOK_URL, HA_WEBHOOK_ID)
 
     save_missing_folders()
-    with open(MEDIUX_FILE, 'w') as file:
-        log("Reset mediux.txt")
+    if os.path.getsize(MEDIUX_FILE) != 0:
+        with open(MEDIUX_FILE, 'w') as file:
+            log("Reset mediux.txt")
+
 
 async def process_item(item: Dict):
     clean_json_names(OUTPUT_FILENAME)

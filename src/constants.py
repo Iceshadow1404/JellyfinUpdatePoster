@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 RAW_COVER_DIR = Path('./RawCover')
