@@ -49,8 +49,12 @@ def archive_existing_content(target_dir: Path):
 
 
 def rename_file(filename: str, dir_name: str) -> str:
+    year_pattern = re.compile(r'\(\d{4}\)')
     lower_filename = filename.lower()
+
     if lower_filename == 'poster.jpg':
+        if not year_pattern.search(dir_name):
+            return f"{dir_name} Collection.jpg"
         return f"{dir_name}.jpg"
     elif lower_filename.startswith('season'):
         season_match = re.search(r'season(\d+)', lower_filename)

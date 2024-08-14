@@ -11,30 +11,55 @@ from requests.exceptions import RequestException
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, ensure_dir
 from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
-from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISSING_FOLDER
+from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISSING_FOLDER, BLACKLIST_FILE
 
 
 def start_get_and_save_series_and_movie():
+    blacklist = load_blacklist()
     media_list = get_and_save_series_and_movies()
     if media_list:
-        new_ids, has_processing_tags, items_with_tags, items_with_unknown_years = process_media_list(media_list)
+        new_ids, has_processing_tags, items_with_tags, items_with_unknown_years = process_media_list(media_list, blacklist)
         old_ids = load_cached_ids()
 
-        unknown_years = any(item.get('Year') == 'Unknown' and item['Type'] in ['Series', 'Movie'] for item in media_list)
-        if has_processing_tags or unknown_years:
-            log("IMDB or TVDB tags detected or unknown years found. Waiting 30 seconds before refreshing...")
+        if has_processing_tags or items_with_unknown_years:
             if has_processing_tags:
+                log("IMDB or TVDB tags detected. Waiting 5 seconds before rechecking...")
                 log("Items with processing tags:")
                 for item in items_with_tags:
                     log(f"  - {item}")
             if items_with_unknown_years:
+                log("Items with unknown years detected. Waiting 5 seconds before rechecking...")
                 log("Items with unknown years:")
                 for item in items_with_unknown_years:
                     log(f"  - {item}")
-            time.sleep(30)
-            if os.path.exists(ID_CACHE_FILENAME):
-                os.remove(ID_CACHE_FILENAME)
-            return start_get_and_save_series_and_movie()  # Restart the process
+
+            time.sleep(5)
+
+            # Recheck for processing tags and unknown years
+            media_list = get_and_save_series_and_movies()
+            new_ids, has_processing_tags, items_with_tags, items_with_unknown_years = process_media_list(media_list, blacklist)
+
+            if has_processing_tags:
+                log("Processing tags still present after waiting.")
+                log("Items with processing tags:")
+                for item in items_with_tags:
+                    log(f"  - {item}")
+                    item_id = item.split("(ID: ")[-1].rstrip(")")
+                    add_to_blacklist(item_id)
+            else:
+                log("No processing tags found after waiting.")
+
+            if items_with_unknown_years:
+                log("Items with unknown years still present after waiting.")
+                log("Items with unknown years:")
+                for item in items_with_unknown_years:
+                    log(f"  - {item}")
+                    item_id = item.split("(ID: ")[-1].rstrip(")")
+                    add_to_blacklist(item_id)
+            else:
+                log("All items now have known years.")
+
+            log("Continuing with the script...")
 
         if new_ids != old_ids:
             log("Changes in media items detected. Running main function...")
@@ -48,6 +73,23 @@ def start_get_and_save_series_and_movie():
             log("Waiting for new Files in ./RawCover")
     else:
         log("Failed to retrieve series and movies data.", success=False)
+
+
+def load_blacklist():
+    if os.path.exists(BLACKLIST_FILE):
+        with open(BLACKLIST_FILE, 'r') as f:
+            return set(json.load(f))
+    return set()
+
+def save_blacklist(blacklist):
+    with open(BLACKLIST_FILE, 'w') as f:
+        json.dump(list(blacklist), f)
+
+def add_to_blacklist(item_id):
+    blacklist = load_blacklist()
+    blacklist.add(item_id)
+    save_blacklist(blacklist)
+    log(f"Added item with ID {item_id} to blacklist.")
 
 
 def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[List[Dict]]:
@@ -139,22 +181,23 @@ def clean_movie_name(name: str) -> str:
     return name.strip()
 
 
-def process_media_list(media_list: List[Dict]) -> Tuple[Set[str], bool, List[str], List[str]]:
+def process_media_list(media_list: List[Dict], blacklist: Set[str]) -> Tuple[Set[str], bool, List[str], List[str]]:
     new_ids = set()
     has_processing_tags = False
     items_with_tags = []
     items_with_unknown_years = []
     for item in media_list:
-        new_ids.add(item['Id'])
-        if item['Type'] in ['Series', 'Movie']:
-            if 'Name' in item and (
-                    re.search(r'\[imdbid-tt\d+\]', item['Name']) or
-                    re.search(r'\[tvdbid-\d+\]', item['Name'])):
-                has_processing_tags = True
-                items_with_tags.append(f"{item['Type']}: {item['Name']} (ID: {item['Id']})")
-                log(f"Processing tag found in: {item['Name']} (ID: {item['Id']})")
-            if item.get('Year') == 'Unknown':
-                items_with_unknown_years.append(f"{item['Type']}: {item['Name']} (ID: {item['Id']})")
+        if item['Id'] not in blacklist:
+            new_ids.add(item['Id'])
+            if item['Type'] in ['Series', 'Movie']:
+                if 'Name' in item and (
+                        re.search(r'\[imdbid-tt\d+\]', item['Name']) or
+                        re.search(r'\[tvdbid-\d+\]', item['Name'])):
+                    has_processing_tags = True
+                    items_with_tags.append(f"{item['Type']}: {item['Name']} (ID: {item['Id']})")
+                    log(f"Processing tag found in: {item['Name']} (ID: {item['Id']})")
+                if item.get('Year') == 'Unknown':
+                    items_with_unknown_years.append(f"{item['Type']}: {item['Name']} (ID: {item['Id']})")
     return new_ids, has_processing_tags, items_with_tags, items_with_unknown_years
 
 
