@@ -88,16 +88,23 @@ IMDB or TVDB tags detected or unknown years found. Waiting 30 seconds before ref
 [2024-08-11 15:06:03] SUCCESS:   - Series: Star Trek: Raumschiff Voyager (ID: 82d420d4780f0f362e5066a79ee5304b)
 ```
 
-Go to the corresponding TV show or movie and add the year.
+Refer to this [Repo](https://github.com/Druidblack/Error-check-Jellyfin-Update-Poster)
+
+or go to the corresponding TV show or movie and add the year.
 
 ![](https://github.com/Iceshadow1404/JellyfinUpdatePoster/blob/main/assets/year.gif)
+
+
 
 
 ## Rare Bug / Limitation 
 
 If you encounter a 'file name too long' error, it may be due to limitations of the ext4 file system (or similar). Consider switching to NTFS or shortening the file name or OriginalTitle in Jellyfin.
 
+Refer to [Error Check Repo](https://github.com/Druidblack/Error-check-Jellyfin-Update-Poster) for Help
+
 ## Credits
 
-Huge thanks to @Druidblack for the Logo
+Huge thanks to @Druidblack for the Logo and general Help especially Bug testing 
+
 @nea89o for the MediuxDownloader and general help 
