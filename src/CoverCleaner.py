@@ -15,9 +15,15 @@ def is_valid_zip(zip_path: Path) -> bool:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.testzip()
         return True
-    except (zipfile.BadZipFile, Exception) as e:
-        log(f"Error checking ZIP file {zip_path}: {e}", success=False)
-        return False
+    except zipfile.BadZipFile as e:
+        log(f"Error: The file is not a valid ZIP file. {zip_path}: {e}", success=False)
+    except PermissionError as e:
+        log(f"Error: Permission denied. Unable to access the file. {zip_path}: {e}", success=False)
+    except OSError as e:
+        log(f"Error: OS error occurred. {zip_path}: {e}", success=False)
+    except Exception as e:
+        log(f"Error: An unexpected error occurred while checking ZIP file. {zip_path}: {e}", success=False)
+    return False
 
 def archive_existing_content(target_dir: Path):
     if not any(target_dir.iterdir()):  # Check if the directory is empty

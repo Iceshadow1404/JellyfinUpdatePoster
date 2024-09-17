@@ -5,17 +5,16 @@ import json
 import threading
 import argparse
 import traceback
-from pathlib import Path
-from typing import Dict
+
+
 from src.constants import *
 import tempfile
 import errno
 
-
 try:
     from src.CoverCleaner import organize_covers
     from src.getIDs import start_get_and_save_series_and_movie
-    from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
+    from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders, directory_manager
     from src.utils import log, ensure_dir
     from src.config import *
     from src.webhook import *
@@ -35,11 +34,14 @@ def setup_directories():
 
 def clean_log_files():
     """Remove old log files and create new ones."""
-    log_files = [PROCESSING_LOG, MISSING_FOLDER, MISSING]
+    log_files = [PROCESSING_LOG, MISSING, EXTRA_FOLDER]
     for log_file in log_files:
         if os.path.exists(log_file):
             os.remove(log_file)
         Path(log_file).touch()
+    if not os.path.exists(MEDIUX_FILE):
+        with open(MEDIUX_FILE, 'w') as file:
+            pass
 
 
 def acquire_lock(lock_file):
@@ -83,6 +85,7 @@ def main():
         return
 
     try:
+        directory_manager.scan_directories()
         clean_log_files()
         organize_covers()
         start_get_and_save_series_and_movie()
@@ -97,13 +100,6 @@ def main():
         missing_folders.clear()
         assign_images_and_update_jellyfin(OUTPUT_FILENAME)
 
-        if missing_folders:
-            if os.path.exists(MISSING_FOLDER):
-                with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
-                    for missing in missing_folders:
-                        f.write(f"{missing}\n")
-        else:
-            log("No missing folders to write.", success=True)
     except OSError as exc:
         if exc.errno == 36:
             log(f"Filename too long {str(exc)}", success=False)
@@ -163,6 +159,7 @@ def check_raw_cover():
 def run_program(run_main_immediately=False):
     """Main program entry point."""
     setup_directories()
+    clean_log_files()
     if os.path.getsize(MEDIUX_FILE) != 0:
         mediux_downloader()
 

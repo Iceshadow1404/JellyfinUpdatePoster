@@ -1,3 +1,5 @@
+mpmath
+sympy
 requests
 Pillow
 aiohttp

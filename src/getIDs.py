@@ -11,7 +11,8 @@ from requests.exceptions import RequestException
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
 from src.utils import log, ensure_dir
 from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
-from src.constants import RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME, MISSING_FOLDER, BLACKLIST_FILE
+from src.constants import *
+
 
 
 def start_get_and_save_series_and_movie():
@@ -113,7 +114,7 @@ def get_and_save_series_and_movies(use_local_file: bool = False) -> Optional[Lis
     url = f'{JELLYFIN_URL}/Items'
     params = {
         'Recursive': 'true',
-        'IncludeItemTypes': 'Series,Season,Movie,BoxSet,Episode',
+        'IncludeItemTypes': 'Series,Season,Movie,BoxSet, Episode',
         'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,Seasons,IndexNumber,ProductionYear',
         'isMissing': 'False'
     }
@@ -237,7 +238,6 @@ def sort_series_and_movies(input_filename: str) -> Optional[List[Dict]]:
 
     result = create_sorted_result(series_dict, boxsets, episodes)
     return result
-
 
 def process_season(item: Dict, series_dict: Dict):
     parent_id = item.get('ParentId')
@@ -388,18 +388,15 @@ def save_if_different(filename: str, new_data: List[Dict]):
         except IOError as e:
             log(f"Error saving JSON file: {e}", success=False)
 
-        if os.path.exists(MISSING_FOLDER):
-            os.remove(MISSING_FOLDER)
-
         try:
             assign_images_and_update_jellyfin(filename)
         except OSError as exc:
             if exc.errno == 36:
                 log(f"Filename too long {str(exc)}", success=False)
-        if missing_folders:
+        """        if missing_folders:
             with open(MISSING_FOLDER, 'a', encoding='utf-8') as f:
                 for missing in missing_folders:
-                    f.write(missing + "\n")
+                    f.write(missing + "\n")"""
     else:
         log("No changes detected in the data.")
 

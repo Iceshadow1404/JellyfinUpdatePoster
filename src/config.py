@@ -3,6 +3,7 @@ import os
 import sys
 import shutil
 from datetime import datetime
+from src.utils import log
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(ROOT_DIR, 'backups')
@@ -62,7 +63,7 @@ def backup_files(files_to_backup):
         else:
             print(f"Warning: {file_path} does not exist. Skipping backup.")
 
-    print(f"New backup created in folder: {new_backup_dir}")
+    log(f"New backup created in folder: {new_backup_dir}")
 
 def backup_all():
     files_to_backup = [
