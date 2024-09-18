@@ -6,7 +6,6 @@ import threading
 import argparse
 import traceback
 
-
 from src.constants import *
 import tempfile
 import errno
@@ -85,7 +84,9 @@ def main():
         return
 
     try:
+        # Refresh DirectoryManager before processing
         directory_manager.scan_directories()
+
         clean_log_files()
         organize_covers()
         start_get_and_save_series_and_movie()
@@ -100,6 +101,9 @@ def main():
         missing_folders.clear()
         assign_images_and_update_jellyfin(OUTPUT_FILENAME)
 
+        # Refresh DirectoryManager after processing
+        directory_manager.scan_directories()
+
     except OSError as exc:
         if exc.errno == 36:
             log(f"Filename too long {str(exc)}", success=False)
@@ -107,6 +111,7 @@ def main():
         log(f"Error in main function: {str(e)}", success=False)
     finally:
         release_lock(lock)
+
 
 def delete_corrupted_files():
     """Delete existing files and recreate them with fresh data."""
@@ -142,6 +147,8 @@ def check_raw_cover():
                     if file.stat().st_size == initial_size:
                         log(f"Found new file: {file.name}")
                         main()
+                        # Reload the DirectoryManager after processing
+                        directory_manager.scan_directories()
                         break
             if os.path.getsize(MEDIUX_FILE) != 0:
                 log("mediux.txt is not empty. Running mediux_downloader.")

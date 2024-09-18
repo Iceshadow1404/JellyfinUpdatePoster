@@ -9,6 +9,7 @@ from datetime import datetime
 
 from src.constants import RAW_COVER_DIR, COVER_DIR, CONSUMED_DIR, REPLACED_DIR, POSTER_DIR, COLLECTIONS_DIR
 from src.utils import log
+from src.updateCover import directory_manager
 
 def is_valid_zip(zip_path: Path) -> bool:
     try:
@@ -82,6 +83,9 @@ def organize_covers():
 
     for file_path in files_to_process:
         process_file(file_path)
+
+    # Refresh DirectoryManager after processing the file
+    directory_manager.scan_directories()
 
 
 def get_files_to_process() -> List[Path]:
@@ -247,6 +251,9 @@ def process_image_file(image_path: Path):
     movie_dir = Path(POSTER_DIR) / f"{movie_name} ({movie_year})"
     movie_dir.mkdir(parents=True, exist_ok=True)
 
+    # Refresh DirectoryManager after creating a new directory
+    directory_manager.scan_directories()
+
     archive_existing_content(movie_dir)
 
     target_filename = f'poster{image_path.suffix.lower()}'
@@ -261,6 +268,8 @@ def process_image_file(image_path: Path):
             target_filename = converted_path.name
 
     log(f"Processed: {image_path.name} -> {target_path}", details=str(target_path))
+
+
 
 def extract_movie_info(filename: str) -> tuple:
     clean_filename = re.sub(r' - (Season \d+|Specials)\.jpg', '', filename)
