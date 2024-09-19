@@ -112,7 +112,7 @@ def process_zip_file(zip_path: Path):
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         extracted_files = [file_info.filename for file_info in zip_ref.infolist()]
         is_series = any(re.match(r'.*Season (\d+)', filename) or "Specials" in filename or re.match(r'.*S\d+E\d+', filename) for filename in extracted_files)
-        has_collection = any("Collection" in filename or "Collections" in filename for filename in extracted_files)
+        has_collection = any("Collection" in filename for filename in extracted_files)
 
         processed_files = set()
 
@@ -158,9 +158,12 @@ def process_zip_file(zip_path: Path):
             if file_ext in ('.png', '.jpg', '.jpeg', '.webp'):
                 process_zip_image(zip_ref, filename, is_series, has_collection, processed_files)
 
+
 def process_zip_image(zip_ref: zipfile.ZipFile, filename: str, is_series: bool, has_collection: bool,
                       processed_files: set):
-    if "Collection" in filename:
+    name, identifier = extract_movie_info(filename)
+
+    if identifier == "Collection" or "Collection" in filename:
         process_collection_image(zip_ref, filename, processed_files)
     elif "Backdrop" in filename:
         process_backdrop_image(zip_ref, filename, processed_files)
@@ -217,15 +220,13 @@ def process_movie_image(zip_ref: zipfile.ZipFile, filename: str, processed_files
         process_target_file(zip_ref, filename, target_path, processed_files)
 
 def process_collection_image(zip_ref: zipfile.ZipFile, filename: str, processed_files: set):
-    collection_match = re.match(r'(.+?) Collection', filename)
-    if collection_match:
-        collection_name = collection_match.group(1)
-        collection_dir = Path(COLLECTIONS_DIR) / collection_name
-        collection_dir.mkdir(parents=True, exist_ok=True)
+    collection_name, _ = extract_movie_info(filename)
+    collection_dir = Path(COLLECTIONS_DIR) / collection_name
+    collection_dir.mkdir(parents=True, exist_ok=True)
 
-        target_filename = 'poster.jpg'
-        target_path = collection_dir / target_filename
-        process_target_file(zip_ref, filename, target_path, processed_files)
+    target_filename = 'poster.jpg'
+    target_path = collection_dir / target_filename
+    process_target_file(zip_ref, filename, target_path, processed_files)
 
 def process_target_file(zip_ref: zipfile.ZipFile, filename: str, target_path: Path, processed_files: set):
     if target_path.exists() and target_path not in processed_files:
@@ -246,18 +247,23 @@ def generate_unique_filename(directory: Path, filename: str) -> str:
         counter += 1
     return new_filename
 
+
 def process_image_file(image_path: Path):
-    movie_name, movie_year = extract_movie_info(image_path.name)
-    movie_dir = Path(POSTER_DIR) / f"{movie_name} ({movie_year})"
-    movie_dir.mkdir(parents=True, exist_ok=True)
+    name, identifier = extract_movie_info(image_path.name)
 
-    # Refresh DirectoryManager after creating a new directory
-    directory_manager.scan_directories()
+    if identifier == "Collection":
+        collection_dir = Path(COLLECTIONS_DIR) / name
+        collection_dir.mkdir(parents=True, exist_ok=True)
+        target_filename = 'poster.jpg'
+        target_path = collection_dir / target_filename
+    else:
+        movie_dir = Path(POSTER_DIR) / f"{name} ({identifier})"
+        movie_dir.mkdir(parents=True, exist_ok=True)
+        target_filename = 'poster.jpg'
+        target_path = movie_dir / target_filename
 
-    archive_existing_content(movie_dir)
 
-    target_filename = f'poster{image_path.suffix.lower()}'
-    target_path = movie_dir / target_filename
+    archive_existing_content(target_path.parent)
 
     shutil.copy2(image_path, target_path)
 
@@ -270,12 +276,18 @@ def process_image_file(image_path: Path):
     log(f"Processed: {image_path.name} -> {target_path}", details=str(target_path))
 
 
-
-def extract_movie_info(filename: str) -> tuple:
+def extract_movie_info(filename: str) -> tuple[str, str]:
     clean_filename = re.sub(r' - (Season \d+|Specials)\.jpg', '', filename)
+
+    # Check for Collection first
+    if "Collection" in clean_filename:
+        collection_name = clean_filename.split("Collection")[0].strip()
+        return collection_name, "Collection"
+
     movie_match = re.match(r'(.+?) \((\d{4})\)', clean_filename)
     if movie_match:
         return movie_match.groups()
+
     return clean_filename.split('(')[0].strip(), 'Unknown'
 
 def convert_to_jpg(image_path: Path) -> Optional[Path]:
