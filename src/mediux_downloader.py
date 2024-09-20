@@ -23,6 +23,8 @@ extension = 'jpg'
 format = 'JPEG'
 
 
+download_episode_covers = False
+
 def mediux_downloader():
     asyncio.run(async_mediux_downloader())
 
@@ -102,14 +104,19 @@ def merge_zip_files(zip_files, series_name):
         os.remove(RAW_COVER_DIR / zip_file)
     log(f"Original ZIP files for {series_name} removed.")
 
+
 async def download_images(file_collection, zf: zipfile.ZipFile):
     async with ClientSession() as session:
         tasks = []
         for file in file_collection:
-            file_url = 'https://api.mediux.pro/assets/' + file["id"]
             file_title = file['title'].strip()
+            if not download_episode_covers and re.search(r'S\d+ E\d+', file_title):
+                log(f'Skipping episode cover: {file_title}')
+                continue
+
             file_title = clean_name(file_title)
             file_name = file_title + "." + extension
+            file_url = 'https://api.mediux.pro/assets/' + file["id"]
 
             log(f'Queuing download for {file_title} from {file_url}')
             task = asyncio.create_task(download_and_save_image(session, file_url, file_name, zf))

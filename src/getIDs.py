@@ -9,7 +9,7 @@ from typing import List, Dict, Set, Tuple, Optional
 from requests.exceptions import RequestException
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_API_KEY, USE_TMDB
-from src.utils import log, ensure_dir
+from src.utils import log, ensure_dir, delete_corrupted_files
 from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders
 from src.constants import *
 
@@ -381,6 +381,7 @@ def save_if_different(filename: str, new_data: List[Dict]):
 
     if old_data != new_data:
         log("Changes detected, saving the new file.")
+        delete_corrupted_files()
         try:
             with open(filename, 'w', encoding='utf-8') as outfile:
                 json.dump(new_data, outfile, ensure_ascii=False, indent=4)

@@ -1,7 +1,7 @@
 # src/utils.py
 import os
 from datetime import datetime
-from src.constants import PROCESSING_LOG
+from src.constants import *
 
 
 def log(message: str, success: bool = True, details: str = None):
@@ -63,3 +63,18 @@ def get_content_type(file_path: str) -> str:
         return 'image/webp'
     else:
         raise ValueError(f"Unsupported file format for {file_path}")
+
+def delete_corrupted_files():
+    """Delete existing files and recreate them with fresh data."""
+    files_to_recreate = [RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME]
+
+    try:
+        for file in files_to_recreate:
+            if os.path.exists(file):
+                os.remove(file)
+                log(f"Deleted existing file: {file}", success=True)
+
+
+        log("Successfully recreated and populated new files", success=True)
+    except Exception as e:
+        log(f"Error recreating files: {str(e)}", success=False)

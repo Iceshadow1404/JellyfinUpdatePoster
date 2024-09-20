@@ -5,16 +5,16 @@ import json
 import threading
 import argparse
 import traceback
-
-from src.constants import *
 import tempfile
 import errno
+
+from src.constants import *
 
 try:
     from src.CoverCleaner import organize_covers
     from src.getIDs import start_get_and_save_series_and_movie
     from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders, directory_manager
-    from src.utils import log, ensure_dir
+    from src.utils import log, ensure_dir, delete_corrupted_files
     from src.config import *
     from src.webhook import *
     from src.mediux_downloader import mediux_downloader
@@ -84,9 +84,6 @@ def main():
         return
 
     try:
-        # Refresh DirectoryManager before processing
-        directory_manager.scan_directories()
-
         clean_log_files()
         organize_covers()
         start_get_and_save_series_and_movie()
@@ -96,6 +93,8 @@ def main():
         except json.JSONDecodeError as json_error:
             log(f"JSON decoding error: {str(json_error)}. Creating new files...", success=False)
             delete_corrupted_files()
+            start_get_and_save_series_and_movie()
+            clean_json_names(OUTPUT_FILENAME)
             return
 
         missing_folders.clear()
@@ -112,23 +111,6 @@ def main():
     finally:
         release_lock(lock)
 
-
-def delete_corrupted_files():
-    """Delete existing files and recreate them with fresh data."""
-    files_to_recreate = [RAW_FILENAME, OUTPUT_FILENAME, ID_CACHE_FILENAME]
-
-    try:
-        for file in files_to_recreate:
-            if os.path.exists(file):
-                os.remove(file)
-                log(f"Deleted existing file: {file}", success=True)
-
-        start_get_and_save_series_and_movie()
-        clean_json_names(OUTPUT_FILENAME)
-
-        log("Successfully recreated and populated new files", success=True)
-    except Exception as e:
-        log(f"Error recreating files: {str(e)}", success=False)
 
 def check_raw_cover():
     """Check Raw Cover directory every 10 seconds for new files."""

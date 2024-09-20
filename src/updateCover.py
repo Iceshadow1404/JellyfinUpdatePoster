@@ -210,12 +210,13 @@ def process_item_safe(item: Dict) -> Dict:
 def process_item(item: Dict) -> Dict:
     clean_json_names(OUTPUT_FILENAME)
 
-    if 'EnglishTitle' not in item or not all(ord(c) < 128 for c in item['EnglishTitle']):
-        if USE_TMDB:
-            media_type = 'tv' if 'Seasons' in item else 'movie'
-            english_title = get_english_title(item.get('OriginalTitle', item.get('Name')), item.get('Year'), media_type)
-            if english_title:
-                item['EnglishTitle'] = english_title
+    #if 'OriginalTitle' in item and not all(ord(c) < 128 for c in item['OriginalTitle']):
+    if USE_TMDB:
+        media_type = 'tv' if 'Seasons' in item else 'movie'
+        original_title = item.get('OriginalTitle', item.get('Name'))
+        english_title = get_english_title(original_title, item.get('Year'), original_title, media_type)
+        if english_title:
+            item['EnglishTitle'] = english_title
 
     item_dir = directory_manager.get_item_directory(item)
     if not item_dir:
