@@ -11,7 +11,7 @@ import errno
 from src.constants import *
 
 try:
-    from src.CoverCleaner import organize_covers
+    from src.CoverCleaner import cover_cleaner
     from src.getIDs import start_get_and_save_series_and_movie
     from src.updateCover import clean_json_names, assign_images_and_update_jellyfin, missing_folders, directory_manager
     from src.utils import log, ensure_dir, delete_corrupted_files
@@ -85,7 +85,7 @@ def main():
 
     try:
         clean_log_files()
-        organize_covers()
+        cover_cleaner()
         start_get_and_save_series_and_movie()
 
         try:
