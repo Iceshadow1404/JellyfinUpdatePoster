@@ -4,13 +4,14 @@ import logging
 import argparse
 import traceback
 
-from src.coverCleaner import cover_cleaner, RAW_COVER_DIR, reprocess_unmatched_files
+from src.coverCleaner import cover_cleaner, reprocess_unmatched_files
 from src.getIDs import get_jellyfin_content
 from src.detectContentChange import check_jellyfin_content
 from src.logging import setup_logging
 from src.updateCover import UpdateCover
 from src.languageLookup import collect_titles
 from src.blacklist import update_output_file
+from src.constants import RAW_COVER_DIR
 
 logger = logging.getLogger(__name__)
 
