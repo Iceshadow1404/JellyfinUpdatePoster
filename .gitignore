@@ -1,6 +1,6 @@
 .venv
-./Cover
-./RawCover
+/Cover
+/RawCover
 .idea
 Scratch.md
 .env
@@ -10,3 +10,4 @@ Replaced
 *.txt
 !blacklist.json
 !requirements.txt
+/Cover/
