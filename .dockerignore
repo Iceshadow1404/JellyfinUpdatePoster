@@ -1,0 +1,13 @@
+.venv
+./Cover
+./RawCover
+.idea
+Scratch.md
+.env
+Consumed
+Replaced
+*.json
+*.txt
+!requirements.txt
+ __pycache__
+.git
