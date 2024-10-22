@@ -161,6 +161,10 @@ Drop your image or .zip files into the `RawCover` folder.
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
+## Contact
+
+- Feel free to message me on discord `Iceshadow_` if you have any questions or need help
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
