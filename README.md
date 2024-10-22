@@ -30,8 +30,6 @@ This Python-based application is designed to automate the management and organiz
 
 1. Create a `docker-compose.yml`:
 ```yaml
-version: '3.8'
-
 services:
   jellyfinupdateposter:
     image: iceshadow/jellyfinupdateposter:latest
@@ -41,6 +39,7 @@ services:
       - TMDB_API_KEY=your-tmdb-api-key
       - INCLUDE_EPISODES=false
       - TZ=Europe/Berlin
+      - chunk_size=400 # Load items in chunks to save memory. Higher value = faster, but more RAM usage
     volumes:
       - ./your-local-path:/mount
     restart: unless-stopped
@@ -70,6 +69,7 @@ JELLYFIN_URL=http://your-jellyfin-server:8096
 JELLYFIN_API_KEY=your-jellyfin-api-key
 TMDB_API_KEY=your-tmdb-api-key
 INCLUDE_EPISODES=false
+chunk_size=400 # Load items in chunks to save memory. Higher value = faster, but more RAM usage
 ```
 
 Required configuration variables:

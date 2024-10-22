@@ -8,7 +8,7 @@ from base64 import b64encode
 import gc
 import os
 
-from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY
+from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, chunk_size
 from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER, \
     COVER_DIR
 
@@ -253,8 +253,6 @@ class UpdateCover:
             self.missing_folders.clear()
             self.extra_folders.clear()
 
-            # Load items in chunks to reduce memory usage
-            chunk_size = 50
             with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
                 items = json.load(f)
 
