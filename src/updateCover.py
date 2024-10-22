@@ -56,9 +56,15 @@ class UpdateCover:
 
         # If we reach here, no directory was found
         base_dir = COLLECTIONS_DIR if item_type == "BoxSet" else POSTER_DIR
-        missing_name = item_original_title if item_original_title and not any(ord(char) > 127 for char in item_original_title) else item_name
 
-        missing_folder = f"Folder not found: {base_dir / f'{missing_name} ({item_year})'}"
+        if base_dir == COLLECTIONS_DIR:
+            missing_name = f"{item_original_title}" if item_original_title and not any(
+                ord(char) > 127 for char in item_original_title) else f"{item_name}"
+        else:
+            missing_name = f"{item_original_title} ({item_year})" if item_original_title and not any(
+                ord(char) > 127 for char in item_original_title) else f"{item_name} ({item_year})"
+
+        missing_folder = f"Folder not found: {base_dir / missing_name}"
         self.missing_folders.append(missing_folder)
         logger.warning(missing_folder)
         return None
