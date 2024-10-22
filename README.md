@@ -51,7 +51,7 @@ services:
 1. Clone the repository:
 ```bash
 git clone https://github.com/Iceshadow1404/JellyfinUpdatePoster
-cd jellyfin-cover-manager
+cd JellyfinUpdatePoster
 ```
 
 2. Install required dependencies:
