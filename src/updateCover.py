@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import aiohttp
 from base64 import b64encode
-import unicodedata
-import re
+import gc
 import os
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY
@@ -85,23 +84,30 @@ class UpdateCover:
         return None
 
     async def update_jellyfin(self, id: str, image_path: Path, item: Dict, image_type: str = 'Primary', extra_info: str = ''):
-        endpoint = f'/Items/{id}/Images/{image_type}/0'
-        url = f"{JELLYFIN_URL}{endpoint}"
-        headers = {
-            'X-Emby-Token': API_KEY,
-            'Content-Type': self.get_content_type(str(image_path))
-        }
+        try:
+            endpoint = f'/Items/{id}/Images/{image_type}/0'
+            url = f"{JELLYFIN_URL}{endpoint}"
+            headers = {
+                'X-Emby-Token': API_KEY,
+                'Content-Type': self.get_content_type(str(image_path))
+            }
 
-        if not image_path.exists():
-            logger.warning(f"Image file not found: {image_path}. Skipping.")
-            return
+            if not image_path.exists():
+                logger.warning(f"Image file not found: {image_path}. Skipping.")
+                return
 
-        with image_path.open('rb') as file:
-            image_data = file.read()
-            image_base64 = b64encode(image_data)
-
-        async with aiohttp.ClientSession() as session:
+            # Use context manager for file handling to ensure proper cleanup
+            image_data = None
             try:
+                with image_path.open('rb') as file:
+                    image_data = file.read()
+                    image_base64 = b64encode(image_data)
+            finally:
+                # Explicitly delete the raw image data after encoding
+                del image_data
+                gc.collect()
+
+            async with aiohttp.ClientSession() as session:
                 async with session.post(url, headers=headers, data=image_base64) as response:
                     response.raise_for_status()
                     display_name = item['Name']
@@ -110,10 +116,15 @@ class UpdateCover:
                         log_message += f' - {extra_info}'
                     log_message += ' successfully.'
                     logger.info(log_message)
-            except aiohttp.ClientResponseError as e:
-                display_name = item['Name']
-                logger.error(f'Error updating {image_type} image for {self.clean_name(display_name)}{" - " + extra_info if extra_info else ""}. Status Code: {e.status}')
-                logger.error(f'Response: {e.message}')
+
+        except Exception as e:
+            display_name = item['Name']
+            logger.error(f'Error updating {image_type} image for {self.clean_name(display_name)}{" - " + extra_info if extra_info else ""}. Error: {str(e)}')
+        finally:
+            # Clear the encoded image data
+            if 'image_base64' in locals():
+                del image_base64
+            gc.collect()
 
 
     @staticmethod
@@ -127,73 +138,143 @@ class UpdateCover:
         }.get(ext, 'application/octet-stream')
 
     async def process_item(self, item: Dict):
-        item_dir = self.get_item_directory(item)
-        if not item_dir:
-            return
+        try:
+            item_dir = self.get_item_directory(item)
+            if not item_dir:
+                return
 
-        # Update main poster
-        main_poster = self.find_image(item_dir, 'poster')
-        if main_poster:
-            await self.update_jellyfin(item['Id'], main_poster, item, 'Primary')
+            # Update main poster
+            main_poster = self.find_image(item_dir, 'poster')
+            if main_poster:
+                await self.update_jellyfin(item['Id'], main_poster, item, 'Primary')
+                gc.collect()
 
-        # Update backdrop
-        backdrop = self.find_image(item_dir, 'backdrop')
-        if backdrop:
-            await self.update_jellyfin(item['Id'], backdrop, item, 'Backdrop')
+            # Update backdrop
+            backdrop = self.find_image(item_dir, 'backdrop')
+            if backdrop:
+                await self.update_jellyfin(item['Id'], backdrop, item, 'Backdrop')
+                gc.collect()
 
-        # Process seasons and episodes for series
-        if 'Seasons' in item:
-            for season_name, season_data in item['Seasons'].items():
-                season_number = season_name.split()[-1]
-                season_image = self.find_image(item_dir, f'Season{season_number.zfill(2)}')
-                if season_image:
-                    await self.update_jellyfin(season_data['Id'], season_image, item, 'Primary', f'Season {season_number}')
+            # Process seasons and episodes for series
+            if 'Seasons' in item:
+                for season_name, season_data in item['Seasons'].items():
+                    season_number = season_name.split()[-1]
+                    season_image = self.find_image(item_dir, f'Season{season_number.zfill(2)}')
+                    if season_image:
+                        await self.update_jellyfin(season_data['Id'], season_image, item, 'Primary', f'Season {season_number}')
+                        gc.collect()
 
-                for episode_number, episode_id in season_data.get('Episodes', {}).items():
-                    episode_image = self.find_image(item_dir, f'S{season_number.zfill(2)}E{episode_number.zfill(2)}')
-                    if episode_image:
-                        await self.update_jellyfin(episode_id, episode_image, item, 'Primary', f'S{season_number}E{episode_number}')
+                    for episode_number, episode_id in season_data.get('Episodes', {}).items():
+                        episode_image = self.find_image(item_dir, f'S{season_number.zfill(2)}E{episode_number.zfill(2)}')
+                        if episode_image:
+                            await self.update_jellyfin(episode_id, episode_image, item, 'Primary', f'S{season_number}E{episode_number}')
+                            gc.collect()
 
-    async def run(self):
-        self.missing_folders.clear()
-        self.extra_folders.clear()
-        with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
-            items = json.load(f)
-
-        tasks = [self.process_item(item) for item in items]
-        await asyncio.gather(*tasks)
-
-        self.save_missing_folders()
+        except Exception as e:
+            logger.error(f"Error processing item {item.get('Name', 'Unknown')}: {str(e)}")
+        finally:
+            # Ensure cleanup after processing each item
+            gc.collect()
 
     def save_missing_folders(self):
-        all_folders = set(POSTER_DIR.glob('*')) | set(COLLECTIONS_DIR.glob('*'))
-        self.extra_folders = list(all_folders - set(self.used_folders))
+        """Save information about missing and extra folders with memory optimization."""
+        try:
+            # Process folders in chunks to optimize memory usage
+            all_folders = set()
+            chunk_size = 100  # Adjust based on your needs
 
-        with open(MISSING, 'w', encoding='utf-8') as f:
-            for folder in self.missing_folders:
-                f.write(f"{folder}\n")
+            # Collect POSTER_DIR folders
+            for chunk in self._chunk_iterator(POSTER_DIR.glob('*'), chunk_size):
+                all_folders.update(chunk)
+                gc.collect()
 
-        if os.path.getsize(MISSING) == 0:
-            os.remove(MISSING)
+            # Collect COLLECTIONS_DIR folders
+            for chunk in self._chunk_iterator(COLLECTIONS_DIR.glob('*'), chunk_size):
+                all_folders.update(chunk)
+                gc.collect()
 
-        with open(EXTRA_FOLDER, 'w', encoding='utf-8') as f:
-            for folder in self.extra_folders:
-                f.write(f"Didn't use Folder: {folder}\n")
+            # Calculate extra folders
+            self.extra_folders = list(all_folders - set(self.used_folders))
+            gc.collect()
 
-        if os.path.getsize(EXTRA_FOLDER) == 0:
-            os.remove(EXTRA_FOLDER)
+            # Write missing folders
+            if self.missing_folders:
+                with open(MISSING, 'w', encoding='utf-8') as f:
+                    for folder in self.missing_folders:
+                        f.write(f"{folder}\n")
 
-        missing_exists = os.path.exists(MISSING)
-        extra_exists = os.path.exists(EXTRA_FOLDER)
+            # Remove empty missing file
+            if os.path.exists(MISSING) and os.path.getsize(MISSING) == 0:
+                os.remove(MISSING)
 
-        if missing_exists and extra_exists:
-            logger.info(f"Saved missing and unused folders to {MISSING} and {EXTRA_FOLDER}")
-        elif missing_exists:
-            logger.info(f"Saved missing folders to {MISSING}, but no unused folders.")
-        elif extra_exists:
-            logger.info(f"Saved unused folders to {EXTRA_FOLDER}, but no missing folders.")
-        else:
-            logger.info("No missing or unused folders to save.")
+            # Write extra folders
+            if self.extra_folders:
+                with open(EXTRA_FOLDER, 'w', encoding='utf-8') as f:
+                    for folder in self.extra_folders:
+                        f.write(f"Didn't use Folder: {folder}\n")
+
+            # Remove empty extra folder file
+            if os.path.exists(EXTRA_FOLDER) and os.path.getsize(EXTRA_FOLDER) == 0:
+                os.remove(EXTRA_FOLDER)
+
+            # Log results
+            missing_exists = os.path.exists(MISSING)
+            extra_exists = os.path.exists(EXTRA_FOLDER)
+
+            if missing_exists and extra_exists:
+                logger.info(f"Saved missing and unused folders to {MISSING} and {EXTRA_FOLDER}")
+            elif missing_exists:
+                logger.info(f"Saved missing folders to {MISSING}, but no unused folders.")
+            elif extra_exists:
+                logger.info(f"Saved unused folders to {EXTRA_FOLDER}, but no missing folders.")
+            else:
+                logger.info("No missing or unused folders to save.")
+
+        except Exception as e:
+            logger.error(f"Error in save_missing_folders: {str(e)}")
+        finally:
+            gc.collect()
+
+    @staticmethod
+    def _chunk_iterator(iterable, chunk_size):
+        """Helper method to process iterables in chunks."""
+        chunk = []
+        for item in iterable:
+            chunk.append(item)
+            if len(chunk) >= chunk_size:
+                yield chunk
+                chunk = []
+                gc.collect()
+        if chunk:
+            yield chunk
+
+    async def run(self):
+        try:
+            self.missing_folders.clear()
+            self.extra_folders.clear()
+
+            # Load items in chunks to reduce memory usage
+            chunk_size = 50
+            with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
+                items = json.load(f)
+
+            for i in range(0, len(items), chunk_size):
+                chunk = items[i:i + chunk_size]
+                tasks = [self.process_item(item) for item in chunk]
+                await asyncio.gather(*tasks)
+                gc.collect()  # Force garbage collection after each chunk
+
+                # Log progress
+                logger.info(f"Processed items {i + 1} to {min(i + chunk_size, len(items))} of {len(items)}")
+
+            self.save_missing_folders()
+
+        except Exception as e:
+            logger.error(f"Error in run method: {str(e)}")
+        finally:
+            # Final cleanup
+            gc.collect()
+            logger.info("Memory cleanup completed")
 
 
 if __name__ == "__main__":
