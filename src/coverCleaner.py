@@ -281,6 +281,7 @@ def is_collection(filename):
     """Determine if a file is part of a collection based on its filename."""
     return 'collection' in filename.lower() or 'filmreihe' in filename.lower()
 
+
 def process_image_file(file_path, language_data):
     """Process an individual image file."""
     filename = os.path.basename(file_path)
@@ -290,9 +291,10 @@ def process_image_file(file_path, language_data):
     file_path = convert_to_jpg(file_path)
     filename = os.path.basename(file_path)
 
-    # Determine if it's a collection before cleaning the name
-    collection_flag = is_collection(filename)
+    # Check if it's a background/backdrop image
+    is_background = any(term in filename.lower() for term in ['backdrop', 'background'])
 
+    # If it's a background image, we should still try to match the series/movie name
     clean_name_result = clean_name(filename)
     matched_item = find_match(clean_name_result, language_data)
 
@@ -302,31 +304,29 @@ def process_image_file(file_path, language_data):
         year = matched_item.get('year', '')
 
         display_title = (
-            original_title if original_title and original_title != extracted_title and not contains_non_ascii(original_title)
+            original_title if original_title and original_title != extracted_title and not contains_non_ascii(
+                original_title)
             else extracted_title
         )
 
-        folder_name = f"{display_title} ({year})" if year and not collection_flag else display_title
+        folder_name = f"{display_title} ({year})" if year else display_title
         folder_name = sanitize_folder_name(folder_name)
 
-        # Use the collection_flag to determine the correct folder
-        new_folder = os.path.join(COLLECTIONS_DIR if collection_flag else POSTER_DIR, folder_name)
+        new_folder = os.path.join(POSTER_DIR, folder_name)
         os.makedirs(new_folder, exist_ok=True)
 
-        if re.search(r'S\d+\s*E\d+', filename):
-            # Process episode image
+        # Determine the new filename based on the type of image
+        if is_background:
+            new_filename = "background.jpg"
+        elif re.search(r'S\d+\s*E\d+', filename):
             season_episode = re.search(r'S(\d+)\s*E(\d+)', filename)
             new_filename = f"S{int(season_episode.group(1)):02d}E{int(season_episode.group(2)):02d}.jpg"
         elif 'Season' in filename:
-            # Process season poster
             season_number = re.search(r'Season\s*(\d+)', filename)
             new_filename = f"Season{int(season_number.group(1)):02d}.jpg"
         elif 'Specials' in filename:
             new_filename = "Season00.jpg"
-        elif 'Backdrop' in filename:
-            new_filename = "background.jpg"
         else:
-            # Assume it's a series/movie poster
             new_filename = "poster.jpg"
 
         new_file_path = os.path.join(new_folder, new_filename)
@@ -336,26 +336,24 @@ def process_image_file(file_path, language_data):
             archive_existing_content(Path(new_folder))
 
         shutil.move(file_path, new_file_path)
-        return True  # Indicate that the file was processed and moved
+        return True
+
     else:
         # No match found: create a subfolder structure
         logger.warning(f"No match found for: {filename}")
-        series_name = get_series_name(filename)  # Get a consistent series name
-
-        # Use the collection_flag to determine the correct subfolder
-        subfolder = 'Collections' if collection_flag else 'Poster'
+        series_name = get_series_name(filename)
 
         # Get the timestamp folder name
         timestamp = get_timestamp_folder()
 
-        # Create the folder structure: NO_MATCH_FOLDER / subfolder / series_name / timestamp
-        no_match_folder = Path(NO_MATCH_FOLDER) / subfolder / series_name / timestamp
+        # Create the folder structure: NO_MATCH_FOLDER / Poster / series_name / timestamp
+        no_match_folder = Path(NO_MATCH_FOLDER) / 'Poster' / series_name / timestamp
         no_match_folder.mkdir(parents=True, exist_ok=True)
 
         new_file_path = no_match_folder / filename
         shutil.move(file_path, new_file_path)
 
-        logger.info(f"File {filename} moved to No-Match {subfolder} subfolder: {new_file_path}")
+        logger.info(f"File {filename} moved to No-Match Poster subfolder: {new_file_path}")
         return True
 
     return False  # If we reach here, something went wrong
@@ -369,22 +367,31 @@ def process_zip_file(zip_path, language_data):
     logger.info(f"Processing ZIP file: {zip_path}")
     temp_dir = os.path.join(RAW_COVER_DIR, 'temp')
     os.makedirs(temp_dir, exist_ok=True)
-    extract_zip(zip_path, temp_dir)
 
-    processed_files = []
-    for extracted_file in os.listdir(temp_dir):
-        extracted_file_path = os.path.join(temp_dir, extracted_file)
-        if extracted_file.lower().endswith(('.jpg', '.jpeg', '.png')):
-            converted_file_path = convert_to_jpg(extracted_file_path)
-            if process_image_file(converted_file_path, language_data):
-                processed_files.append(extracted_file)
+    try:
+        extract_zip(zip_path, temp_dir)
 
-    shutil.rmtree(temp_dir)
+        all_processed = True
+        for extracted_file in os.listdir(temp_dir):
+            extracted_file_path = os.path.join(temp_dir, extracted_file)
+            if extracted_file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                converted_file_path = convert_to_jpg(extracted_file_path)
+                if not process_image_file(converted_file_path, language_data):
+                    all_processed = False
 
-    # Move the processed ZIP file to the CONSUMED_DIR
-    move_to_consumed(zip_path)
+        if all_processed:
+            # Only move to consumed if all files were processed successfully
+            move_to_consumed(zip_path)
 
-    return True  # Indicate that the ZIP file was processed
+    except Exception as e:
+        logger.error(f"Error processing ZIP file {zip_path}: {str(e)}")
+        all_processed = False
+    finally:
+        # Clean up temp directory
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+    return all_processed
 
 
 def move_to_consumed(file_path):

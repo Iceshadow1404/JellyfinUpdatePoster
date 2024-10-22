@@ -11,7 +11,8 @@ from src.logging import setup_logging
 from src.updateCover import UpdateCover
 from src.languageLookup import collect_titles
 from src.blacklist import update_output_file
-from src.constants import RAW_COVER_DIR
+from src.constants import RAW_COVER_DIR, MEDIUX_FILE
+from src.mediux_downloader import mediux_downloader
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +23,34 @@ async def main_loop(force: bool):
     while True:
         try:
             RAW_COVER_DIR.mkdir(parents=True, exist_ok=True)
-            files = os.listdir(RAW_COVER_DIR)
 
+            # Initialize mediux as False
+            mediux = False
+
+            if os.path.exists(MEDIUX_FILE):
+                with open(MEDIUX_FILE, 'r') as file:
+                    content = file.read().rstrip()
+                    # Set mediux to True if content is not empty
+                    mediux = bool(content)
+            else:
+                with open(MEDIUX_FILE, 'w'):
+                    pass
+
+            files = os.listdir(RAW_COVER_DIR)
             content_changed = check_jellyfin_content()
 
-            if files or content_changed or force:  # Check if there are any files or new jellyfin content
+            # Check if there are any files or new jellyfin content
+            if files or content_changed or force or mediux:
                 logging.info('Found files, new Jellyfin content, or --force flag set!')
                 if content_changed or force:
                     get_jellyfin_content()
                     collect_titles()
                     update_output_file()
-                if files:
+                if files or mediux:
+                    if mediux:
+                        await mediux_downloader()
                     cover_cleaner()
+                    mediux = False
 
                 # Load language data
                 from src.coverCleaner import load_language_data

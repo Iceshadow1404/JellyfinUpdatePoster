@@ -15,3 +15,4 @@ CONTENT_IDS_FILE = './src/content_id.json'
 MISSING = "./missing_folders.txt"
 EXTRA_FOLDER = "./extra_folders.txt"
 LANGUAGE_DATA_FILENAME = "./src/language.json"
+MEDIUX_FILE = './mediux.txt'
