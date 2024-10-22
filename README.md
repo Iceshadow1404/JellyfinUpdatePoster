@@ -50,7 +50,7 @@ services:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/jellyfin-cover-manager.git
+git clone https://github.com/Iceshadow1404/JellyfinUpdatePoster
 cd jellyfin-cover-manager
 ```
 
