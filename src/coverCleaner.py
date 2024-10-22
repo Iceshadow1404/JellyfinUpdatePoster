@@ -62,41 +62,40 @@ def find_collection_match(clean_name, language_data):
     best_match = None
     best_score = 0
 
-    for item_id, item_data in language_data.items():
+    # Only search in collections data
+    for item_id, item_data in language_data.get('collections', {}).items():
         if item_id == 'last_updated':
             continue
 
-        if item_data.get('Type', '').lower() == 'boxset' or item_data.get('type', '').lower() == 'boxset':
-            collection_name = item_data.get('Name', '')
-            collection_year = item_data.get('Year') or item_data.get('year')
-            tmdb_id = item_data.get('TMDbId') or item_id  # Use TMDbId or item_id as fallback
-            extracted_title = item_data.get('extracted_title', collection_name)
+        collection_name = item_data.get('extracted_title', '')
+        collection_year = item_data.get('year')
+        tmdb_id = item_data.get('TMDbId') or item_id
 
-            # Compare with the main collection name
-            score = fuzz.ratio(clean_name.lower(), collection_name.lower())
+        # Compare with the main collection name
+        score = fuzz.ratio(clean_name.lower(), collection_name.lower())
 
-            # Compare with additional titles if available
-            if 'titles' in item_data:
-                for title in item_data['titles']:
-                    title_score = fuzz.ratio(clean_name.lower(), title.lower())
-                    score = max(score, title_score)
+        # Compare with additional titles if available
+        if 'titles' in item_data:
+            for title in item_data['titles']:
+                title_score = fuzz.ratio(clean_name.lower(), title.lower())
+                score = max(score, title_score)
 
-            # Additional comparison with 'Collection' appended if it's not already there
-            if 'collection' not in clean_name.lower():
-                collection_score = fuzz.ratio(f"{clean_name} Collection".lower(), collection_name.lower())
-                score = max(score, collection_score)
+        # Additional comparison with 'Collection' appended if it's not already there
+        if 'collection' not in clean_name.lower():
+            collection_score = fuzz.ratio(f"{clean_name} Collection".lower(), collection_name.lower())
+            score = max(score, collection_score)
 
-            if score > best_score:
-                best_score = score
-                best_match = {
-                    'id': item_id,
-                    'name': collection_name,
-                    'year': collection_year,
-                    'tmdb_id': tmdb_id,
-                    'extracted_title': extracted_title
-                }
+        if score > best_score:
+            best_score = score
+            best_match = {
+                'id': item_id,
+                'name': collection_name,
+                'year': collection_year,
+                'tmdb_id': tmdb_id,
+                'extracted_title': collection_name
+            }
 
-    if best_score >= 90:  # Threshold for a lenient match
+    if best_score >= 90:
         logger.info(f"Found collection match: {best_match['name']} (Score: {best_score})")
         return best_match
 
@@ -216,39 +215,37 @@ def find_match(clean_name, language_data):
     best_match = None
     best_score = 0
 
-    for item_id, item_data in language_data.items():
-        if item_id == 'last_updated':
-            continue
+    # Search in both movies and TV shows
+    for category in ['movies', 'tv']:
+        for item_id, item_data in language_data.get(category, {}).items():
+            if item_id == 'last_updated':
+                continue
 
-        extracted_title = item_data.get('extracted_title', '')
-        original_title = item_data.get('originaltitle', '')
-        item_year = item_data.get('year')
+            extracted_title = item_data.get('extracted_title', '')
+            original_title = item_data.get('originaltitle', '')
+            item_year = item_data.get('year')
 
-        # Compare with extracted_title
-        extracted_title_score = compare_titles(clean_name_without_year, extracted_title, item_year, file_year)
+            # Compare with extracted_title
+            extracted_title_score = compare_titles(clean_name_without_year, extracted_title, item_year, file_year)
 
-        # Compare with original_title
-        original_title_score = compare_titles(clean_name_without_year, original_title, item_year,
-                                              file_year) if original_title else 0
+            # Compare with original_title
+            original_title_score = compare_titles(clean_name_without_year, original_title, item_year, file_year) if original_title else 0
 
-        # Compare with all titles in the array
-        title_scores = [compare_titles(clean_name_without_year, title, item_year, file_year) for title in
-                        item_data.get('titles', [])]
+            # Compare with all titles in the array
+            title_scores = [compare_titles(clean_name_without_year, title, item_year, file_year) for title in item_data.get('titles', [])]
 
-        # Get the maximum score from all comparisons
-        max_score = max([extracted_title_score, original_title_score] + title_scores)
+            # Get the maximum score from all comparisons
+            max_score = max([extracted_title_score, original_title_score] + title_scores)
 
-        if max_score > best_score:
-            best_score = max_score
-            best_match = {
-                'id': item_id,
-                'extracted_title': extracted_title,
-                'original_title': original_title,
-                'year': item_year
-            }
-
-        logger.debug(
-            f"Comparing with - Extracted Title: {extracted_title} ({extracted_title_score}), Original Title: {original_title} ({original_title_score}), Max Title Score: {max(title_scores) if title_scores else 0}, Year: {item_year}")
+            if max_score > best_score:
+                best_score = max_score
+                best_match = {
+                    'id': item_id,
+                    'extracted_title': extracted_title,
+                    'original_title': original_title,
+                    'year': item_year,
+                    'type': category  # Add type information to help with processing
+                }
 
     if best_score >= 95:
         return best_match

@@ -181,7 +181,6 @@ class UpdateCover:
         try:
             # Process folders in chunks to optimize memory usage
             all_folders = set()
-            chunk_size = 100  # Adjust based on your needs
 
             # Collect POSTER_DIR folders
             for chunk in self._chunk_iterator(POSTER_DIR.glob('*'), chunk_size):

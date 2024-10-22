@@ -76,13 +76,27 @@ def get_tmdb_titles(tmdb_id, media_type="movie"):
 def load_processed_data():
     try:
         with open(LANGUAGE_DATA_FILENAME, "r", encoding="utf-8") as infile:
-            return json.load(infile)  # Load processed TMDb IDs and titles
+            data = json.load(infile)
+            # Convert old format to new format if necessary
+            if not isinstance(data, dict) or not all(key in data for key in ['movies', 'tv', 'collections']):
+                return {
+                    'movies': {},
+                    'tv': {},
+                    'collections': {},
+                    'last_updated': data.get('last_updated', datetime.now().isoformat())
+                }
+            return data
     except FileNotFoundError:
-        return {}  # Return an empty dictionary if the file doesn't exist
+        return {
+            'movies': {},
+            'tv': {},
+            'collections': {},
+            'last_updated': datetime.now().isoformat()
+        }
 
 # Save processed data to the file with the last update time
 def save_processed_data(data):
-    data['last_updated'] = datetime.now().isoformat()  # Save the current time as last updated
+    data['last_updated'] = datetime.now().isoformat()
     with open(LANGUAGE_DATA_FILENAME, "w", encoding="utf-8") as outfile:
         json.dump(data, outfile, indent=4, ensure_ascii=False)
 
@@ -95,19 +109,22 @@ def is_cache_valid(data):
 
 # Main function
 def collect_titles():
-    # Load already processed titles to avoid re-fetching
     processed_data = load_processed_data()
 
-    # Refresh cache if it's older than the defined period
     if not is_cache_valid(processed_data):
         logger.warning("Cache is outdated, refreshing data...")
-        processed_data = {}  # Reset processed data to fetch new entries
+        processed_data = {
+            'movies': {},
+            'tv': {},
+            'collections': {},
+            'last_updated': datetime.now().isoformat()
+        }
 
     with open(OUTPUT_FILENAME, "r", encoding="utf-8") as file:
-        media_items = json.load(file)  # Assuming the file contains a list of JSON objects
+        media_items = json.load(file)
 
     total_items = len(media_items)
-    count = 0  # Counter for processed (including skipped) items
+    count = 0
 
     for item in media_items:
         tmdb_id = str(item.get("TMDbId")) if item.get("TMDbId") is not None else None
@@ -116,35 +133,43 @@ def collect_titles():
         originaltitle = item.get("OriginalTitle", "Unknown Title")
         year = item.get("Year", "Unknown Year")
 
-        if tmdb_id in processed_data:
-            count += 1  # Increment the counter for skipped items
+        # Map media types to correct categories
+        if media_type == "series":
+            category = "tv"
+        elif media_type == "movie":
+            category = "movies"
+        elif media_type == "boxset":
+            category = "collections"
+        else:
+            logger.warning(f"Unknown media type: {media_type}")
+            continue
+
+        # Skip if already processed
+        if tmdb_id in processed_data[category]:
+            count += 1
             continue
 
         count += 1
         logger.info(f"Remaining TMDB API calls: {total_items - count}")
 
         if tmdb_id:
-            # Fetch TMDb data (movie, series, or collection)
-            if media_type == "boxset":
-                titles = get_tmdb_titles(tmdb_id, "collection")
-            else:
-                titles = get_tmdb_titles(tmdb_id, media_type)
+            # Map media types for TMDb API
+            tmdb_type = "collection" if media_type == "boxset" else "tv" if media_type == "series" else "movie"
+            titles = get_tmdb_titles(tmdb_id, tmdb_type)
 
             if titles:
-                processed_data[tmdb_id] = {
+                processed_data[category][tmdb_id] = {
                     "titles": titles,
                     "extracted_title": title,
                     "year": year,
                     "type": media_type
                 }
 
-                # Add originaltitle only if media_type is not "boxset"
                 if media_type != "boxset":
-                    processed_data[tmdb_id]["originaltitle"] = originaltitle
+                    processed_data[category][tmdb_id]["originaltitle"] = originaltitle
             else:
-                # Log an error if there are no titles available
                 logger.warning(f"No titles found for ID {tmdb_id}. Saving with an empty array.")
-                processed_data[tmdb_id] = {
+                processed_data[category][tmdb_id] = {
                     "titles": [],
                     "extracted_title": title,
                     "originaltitle": originaltitle,
@@ -152,23 +177,19 @@ def collect_titles():
                     "type": media_type
                 }
 
-            # Pause briefly (reduced to 0.1 seconds)
             sleep(0.1)
         else:
-            # Handle non-TMDB boxsets or items without TMDb ID
             logger.info(f"Processing non-TMDB item: {title}")
-            processed_data[title] = {
+            processed_data[category][title] = {
                 "titles": [title],
                 "extracted_title": title,
                 "year": year,
                 "type": media_type
             }
 
-            # Don't add originaltitle for boxsets
             if media_type != "boxset":
-                processed_data[title]["originaltitle"] = originaltitle
+                processed_data[category][title]["originaltitle"] = originaltitle
 
-        # Save the progress after each item
         save_processed_data(processed_data)
 
 if __name__ == "__main__":
