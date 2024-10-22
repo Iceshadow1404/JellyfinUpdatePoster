@@ -135,9 +135,10 @@ def process_collection(file_path, language_data):
         logger.warning(f"No match found for collection: {filename}")
         return process_unmatched_file(file_path, clean_name)
 
-def process_unmatched_file(file_path, clean_name):
+def process_unmatched_file(file_path, clean_name, year=None):
     """Process an unmatched file by moving it to the NO_MATCH_FOLDER."""
-    no_match_folder = os.path.join(NO_MATCH_FOLDER, clean_name)
+    folder_name = f"{clean_name} ({year})" if year else clean_name
+    no_match_folder = os.path.join(NO_MATCH_FOLDER, folder_name)
     os.makedirs(no_match_folder, exist_ok=True)
 
     new_file_path = os.path.join(no_match_folder, os.path.basename(file_path))
@@ -145,6 +146,7 @@ def process_unmatched_file(file_path, clean_name):
 
     logger.info(f"Unmatched file moved to: {new_file_path}")
     return new_file_path
+
 
 def clean_name(filename):
     """Clean the filename by removing season, episode, and specials information, but preserving the year."""
@@ -171,19 +173,22 @@ def clean_name_for_folder(name):
     return cleaned.strip()
 
 def get_series_name(filename):
-    """Extract the series name from the filename."""
+    """Extract the series name and year from the filename."""
     # Remove season and episode information
     name = re.sub(r'\s*-\s*S\d+\s*E\d+', '', filename)
     name = re.sub(r'\s*-\s*Season\s*\d+', '', name)
     # Remove any mention of 'Specials'
     name = re.sub(r'\s*-\s*Specials', '', name, flags=re.IGNORECASE)
-    # Remove year if present
+    # Extract year if present
+    year_match = re.search(r'\s*\((\d{4})\)', name)
+    year = year_match.group(1) if year_match else None
+    # Remove year from name
     name = re.sub(r'\s*\(\d{4}\)', '', name)
     # Remove any mention of 'backdrop' or 'background'
     name = re.sub(r'\s*-?\s*(Backdrop|Background)', '', name, flags=re.IGNORECASE)
     # Remove file extension
     name = os.path.splitext(name)[0]
-    return clean_name_for_folder(name)
+    return clean_name_for_folder(name), year
 
 def get_timestamp_folder():
     global LAST_TIMESTAMP
@@ -291,8 +296,11 @@ def process_image_file(file_path, language_data):
     # Check if it's a background/backdrop image
     is_background = any(term in filename.lower() for term in ['backdrop', 'background'])
 
-    # If it's a background image, we should still try to match the series/movie name
+    # Extract both name and year from filename
     clean_name_result = clean_name(filename)
+    year_match = re.search(r'\((\d{4})\)', filename)
+    year = year_match.group(1) if year_match else None
+
     matched_item = find_match(clean_name_result, language_data)
 
     if matched_item:
@@ -312,7 +320,7 @@ def process_image_file(file_path, language_data):
         new_folder = os.path.join(POSTER_DIR, folder_name)
         os.makedirs(new_folder, exist_ok=True)
 
-        # Determine the new filename based on the type of image
+
         if is_background:
             new_filename = "background.jpg"
         elif re.search(r'S\d+\s*E\d+', filename):
@@ -328,7 +336,7 @@ def process_image_file(file_path, language_data):
 
         new_file_path = os.path.join(new_folder, new_filename)
 
-        # Archive existing content if file already exists
+
         if os.path.exists(new_file_path):
             archive_existing_content(Path(new_folder))
 
@@ -336,15 +344,17 @@ def process_image_file(file_path, language_data):
         return True
 
     else:
-        # No match found: create a subfolder structure
         logger.warning(f"No match found for: {filename}")
-        series_name = get_series_name(filename)
+        series_name, file_year = get_series_name(filename)
+
+        year_to_use = year or file_year
 
         # Get the timestamp folder name
         timestamp = get_timestamp_folder()
 
-        # Create the folder structure: NO_MATCH_FOLDER / Poster / series_name / timestamp
-        no_match_folder = Path(NO_MATCH_FOLDER) / 'Poster' / series_name / timestamp
+        # Create the folder structure: NO_MATCH_FOLDER / Poster / series_name (year) / timestamp
+        folder_name = f"{series_name} ({year_to_use})" if year_to_use else series_name
+        no_match_folder = Path(NO_MATCH_FOLDER) / 'Poster' / folder_name / timestamp
         no_match_folder.mkdir(parents=True, exist_ok=True)
 
         new_file_path = no_match_folder / filename
@@ -353,7 +363,6 @@ def process_image_file(file_path, language_data):
         logger.info(f"File {filename} moved to No-Match Poster subfolder: {new_file_path}")
         return True
 
-    return False  # If we reach here, something went wrong
 
 def contains_non_ascii(s):
     return any(ord(char) > 127 for char in s)
@@ -474,20 +483,71 @@ def rename_file_for_archive(filename: str, dir_name: str) -> str:
         return f"{dir_name} - Backdrop.jpg"
     return filename
 
-def find_matching_folder(folder_name, language_data):
-    """Find a matching item in language data for the given folder name."""
-    clean_folder_name = clean_name(folder_name.lower())
-    for item in language_data.values():
-        if 'extracted_title' in item:
-            clean_item_name = clean_name(item['extracted_title'].lower())
-            if fuzz.ratio(clean_folder_name, clean_item_name) >= 90:
-                return True
-    return False
 
+def find_matching_folder(folder_name, language_data):
+    """Find a matching item in language data for the given folder name, handling both old and new folder formats."""
+    # Extract year from folder name if present
+    year_match = re.search(r'\((\d{4})\)', folder_name)
+    folder_year = year_match.group(1) if year_match else None
+
+    # Clean folder name (remove year for comparison)
+    clean_folder_name = clean_name(re.sub(r'\s*\(\d{4}\)', '', folder_name.lower()))
+
+    for category in ['movies', 'tv']:
+        for item_id, item_data in language_data.get(category, {}).items():
+            if item_id == 'last_updated':
+                continue
+
+            if 'extracted_title' in item_data:
+                clean_item_name = clean_name(item_data['extracted_title'].lower())
+                name_match = fuzz.ratio(clean_folder_name, clean_item_name) >= 90
+
+                if folder_year and 'year' in item_data:
+                    year_match = str(item_data['year']) == folder_year
+                    if name_match and year_match:
+                        return True, item_data
+
+                elif not folder_year:
+                    if name_match:
+                        return True, item_data
+
+    return False, None
+
+
+def find_matching_folder(folder_name, language_data):
+    """Find a matching item in language data for the given folder name, handling both old and new folder formats."""
+    # Extract year from folder name if present
+    year_match = re.search(r'\((\d{4})\)', folder_name)
+    folder_year = year_match.group(1) if year_match else None
+
+    # Clean folder name (remove year for comparison)
+    clean_folder_name = clean_name(re.sub(r'\s*\(\d{4}\)', '', folder_name.lower()))
+
+    for category in ['movies', 'tv']:
+        for item_id, item_data in language_data.get(category, {}).items():
+            if item_id == 'last_updated':
+                continue
+
+            if 'extracted_title' in item_data:
+                clean_item_name = clean_name(item_data['extracted_title'].lower())
+                name_match = fuzz.ratio(clean_folder_name, clean_item_name) >= 90
+
+                # Wenn der Ordner ein Jahr hat, muss es übereinstimmen
+                if folder_year and 'year' in item_data:
+                    year_match = str(item_data['year']) == folder_year
+                    if name_match and year_match:
+                        return True, item_data
+
+                # Bei alten Ordnern ohne Jahr akzeptieren wir einen Namen-Match
+                elif not folder_year:
+                    if name_match:
+                        return True, item_data
+
+    return False, None
 
 
 def reprocess_unmatched_files(language_data):
-    """Reprocess unmatched files after new content is added."""
+    """Reprocess unmatched files after new content is added, handling both old and new folder formats."""
     logger.info("Reprocessing unmatched files")
 
     for subfolder in ['Collections', 'Poster']:
@@ -499,24 +559,27 @@ def reprocess_unmatched_files(language_data):
             if not series_folder.is_dir():
                 continue
 
-            # Check if the folder name matches any item in language_data
-            if not find_matching_folder(series_folder.name, language_data):
+            has_match, matched_item = find_matching_folder(series_folder.name, language_data)
+
+            if not has_match:
                 logger.info(f"No match found for {series_folder.name}, skipping.")
                 continue
 
             logger.info(f"Match found for {series_folder.name}, processing...")
 
-            # Find the newest dated subfolder
             dated_subfolders = [f for f in series_folder.iterdir() if f.is_dir()]
             if not dated_subfolders:
                 continue
 
             newest_subfolder = max(dated_subfolders, key=lambda x: x.stat().st_mtime)
 
-            # Create a zip file in RAW_COVER_DIR
+            base_name = series_folder.name
+            if matched_item and 'year' in matched_item and not re.search(r'\(\d{4}\)', base_name):
+                base_name = f"{base_name} ({matched_item['year']})"
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            zip_filename = f"{series_folder.name}_{timestamp}.zip"
-            zip_path = RAW_COVER_DIR / zip_filename
+            zip_filename = f"{base_name}_{timestamp}.zip"
+            zip_path = Path(RAW_COVER_DIR) / zip_filename
 
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for file in newest_subfolder.iterdir():
@@ -526,18 +589,15 @@ def reprocess_unmatched_files(language_data):
 
             logger.info(f"Created zip file: {zip_filename}")
 
-            # Remove the files from the newest subfolder
             for file in newest_subfolder.iterdir():
                 if file.is_file():
                     file.unlink()
                     logger.info(f"Removed file: {file}")
 
-            # Remove the empty subfolder
             if not any(newest_subfolder.iterdir()):
                 newest_subfolder.rmdir()
                 logger.info(f"Removed empty subfolder: {newest_subfolder}")
 
-            # Remove the series folder if it's empty
             if not any(series_folder.iterdir()):
                 series_folder.rmdir()
                 logger.info(f"Removed empty series folder: {series_folder}")
