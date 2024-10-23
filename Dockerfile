@@ -15,6 +15,6 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 COPY . /app
 
-EXPOSE 8000
+EXPOSE 8080
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
