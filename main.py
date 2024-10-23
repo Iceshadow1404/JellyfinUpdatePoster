@@ -13,11 +13,13 @@ from src.languageLookup import collect_titles
 from src.blacklist import update_output_file
 from src.constants import RAW_COVER_DIR, MEDIUX_FILE
 from src.mediux_downloader import mediux_downloader
+from src.webhook import WebhookServer
+from src.config import ENABLE_WEBHOOK
 
 logger = logging.getLogger(__name__)
 
 
-async def main_loop(force: bool):
+async def main_loop(force: bool, webhook_server: WebhookServer):
     updater = UpdateCover()
 
     while True:
@@ -38,10 +40,15 @@ async def main_loop(force: bool):
 
             files = os.listdir(RAW_COVER_DIR)
             content_changed = check_jellyfin_content()
+            webhook_triggered = webhook_server.get_trigger_status() if ENABLE_WEBHOOK else False
 
             # Check if there are any files or new jellyfin content
-            if files or content_changed or force or mediux:
-                logging.info('Found files, new Jellyfin content, or --force flag set!')
+            if files or content_changed or force or mediux or webhook_triggered:
+                if webhook_triggered:
+                    logging.info('Process triggered by webhook!')
+                else:
+                    logging.info('Found files, new Jellyfin content, or --force flag set!')
+
                 if content_changed or force:
                     get_jellyfin_content()
                     collect_titles()
@@ -62,6 +69,7 @@ async def main_loop(force: bool):
                 if force:
                     logging.info("Force flag was set, resetting it to False after first iteration.")
                     force = False
+
                 updater.scan_directories()
                 logging.info('Run the UpdateCover process')
                 await updater.run()
@@ -75,6 +83,20 @@ async def main_loop(force: bool):
             await asyncio.sleep(60)  # Wait for 1 minute before retrying if an error occurs
 
 
+async def run_application(force: bool):
+    webhook_server = WebhookServer()
+
+    if ENABLE_WEBHOOK:
+        logger.info("Webhook functionality enabled")
+    else:
+        logger.info("Webhook functionality disabled")
+
+    await asyncio.gather(
+        webhook_server.run_server(),
+        main_loop(force, webhook_server)
+    )
+
+
 if __name__ == "__main__":
     setup_logging()
 
@@ -84,7 +106,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        asyncio.run(main_loop(args.force))
+        asyncio.run(run_application(args.force))
     except KeyboardInterrupt:
         logger.info("Process interrupted by user. Shutting down.")
     except Exception as e:

@@ -4,3 +4,5 @@ python-dotenv
 fuzzywuzzy
 requests
 python-Levenshtein
+fastapi
+uvicorn

@@ -16,6 +16,7 @@ This Python-based application is designed to automate the management and organiz
 - 🔄 Content change detection for Jellyfin libraries
 - 🎨 Colored logging for better visibility
 - 📊 Tracks missing and unused folders
+- 🪝 Webhook support to trigger manual poster updates
 
 ## Prerequisites
 
@@ -40,8 +41,11 @@ services:
       - INCLUDE_EPISODES=false
       - TZ=Europe/Berlin
       - chunk_size=400 # Load items in chunks to save memory. Higher value = faster, but more RAM usage
+      - enable_webhook=false
     volumes:
       - ./your-local-path:/mount
+    ports:
+      - 8080:8080
     restart: unless-stopped
     command: "--force"
 ```
@@ -70,6 +74,7 @@ JELLYFIN_API_KEY=your-jellyfin-api-key
 TMDB_API_KEY=your-tmdb-api-key
 INCLUDE_EPISODES=false
 chunk_size=400 # Load items in chunks to save memory. Higher value = faster, but more RAM usage
+enable_webhook=false
 ```
 
 Required configuration variables:
@@ -160,6 +165,11 @@ Drop your image or .zip files into the `RawCover` folder.
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
+
+## Webhook Integration
+
+- When enabled, sends POST requests to http://your_ip:8000/trigger to manually trigger cover processing. 
+- Check status via GET request to /status.
 
 ## Contact
 

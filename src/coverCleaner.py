@@ -11,7 +11,6 @@ from pathlib import Path
 import json
 from datetime import datetime, timedelta
 
-from src.config import JELLYFIN_URL, API_KEY
 from src.updateCover import UpdateCover
 from src.constants import LANGUAGE_DATA_FILENAME, RAW_COVER_DIR, COVER_DIR, COLLECTIONS_DIR, CONSUMED_DIR, \
     NO_MATCH_FOLDER, REPLACED_DIR, POSTER_DIR
