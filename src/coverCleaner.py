@@ -140,18 +140,23 @@ def process_collection(file_path, language_data):
         return new_file_path
     else:
         logger.warning(f"No match found for collection: {filename}")
-        return process_unmatched_file(file_path, clean_name)
+        # Pass is_collection=True to ensure it goes to the Collections subfolder
+        return process_unmatched_file(file_path, clean_name, year=None, is_collection=True)
 
-def process_unmatched_file(file_path, clean_name, year=None):
-    """Process an unmatched file by moving it to the NO_MATCH_FOLDER."""
+
+def process_unmatched_file(file_path, clean_name, year=None, is_collection=False):
+    """Process an unmatched file by moving it to the appropriate NO_MATCH_FOLDER subfolder."""
     folder_name = f"{clean_name} ({year})" if year else clean_name
-    no_match_folder = os.path.join(NO_MATCH_FOLDER, folder_name)
+
+    # Choose the appropriate subfolder based on whether it's a collection
+    subfolder = 'Collections' if is_collection else 'Poster'
+    no_match_folder = os.path.join(NO_MATCH_FOLDER, subfolder, folder_name)
     os.makedirs(no_match_folder, exist_ok=True)
 
     new_file_path = os.path.join(no_match_folder, os.path.basename(file_path))
     shutil.move(file_path, new_file_path)
 
-    logger.info(f"Unmatched file moved to: {new_file_path}")
+    logger.info(f"Unmatched {'collection' if is_collection else 'file'} moved to: {new_file_path}")
     return new_file_path
 
 
