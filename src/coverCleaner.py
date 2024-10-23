@@ -59,40 +59,47 @@ def find_collection_match(clean_name, language_data):
     """Find a matching collection in language data."""
     logger.debug(f"Searching for collection match: {clean_name}")
 
+    # Remove 'Collection' from the clean_name if present for better matching
+    clean_name = re.sub(r'\s*collection\s*$', '', clean_name, flags=re.IGNORECASE)
+
     best_match = None
     best_score = 0
 
-    # Only search in collections data
-    for item_id, item_data in language_data.get('collections', {}).items():
-        if item_id == 'last_updated':
+    collections = language_data.get('collections', {})
+    for collection_id, collection_data in collections.items():
+        if collection_id == 'last_updated':
             continue
 
-        collection_name = item_data.get('extracted_title', '')
-        collection_year = item_data.get('year')
-        tmdb_id = item_data.get('TMDbId') or item_id
+        # Compare with each title in the titles array
+        for title in collection_data.get('titles', []):
+            # Clean up the comparison title as well
+            clean_title = re.sub(r'\s*collection\s*$', '', title, flags=re.IGNORECASE)
+            score = fuzz.ratio(clean_name.lower(), clean_title.lower())
 
-        # Compare with the main collection name
-        score = fuzz.ratio(clean_name.lower(), collection_name.lower())
+            if score > best_score:
+                best_score = score
+                best_match = {
+                    'id': collection_id,
+                    'name': collection_data.get('extracted_title', ''),
+                    'year': collection_data.get('year'),
+                    'tmdb_id': collection_id,
+                    'extracted_title': collection_data.get('extracted_title', '')
+                }
 
-        # Compare with additional titles if available
-        if 'titles' in item_data:
-            for title in item_data['titles']:
-                title_score = fuzz.ratio(clean_name.lower(), title.lower())
-                score = max(score, title_score)
-
-        # Additional comparison with 'Collection' appended if it's not already there
-        if 'collection' not in clean_name.lower():
-            collection_score = fuzz.ratio(f"{clean_name} Collection".lower(), collection_name.lower())
-            score = max(score, collection_score)
+        # Also compare with extracted_title
+        clean_extracted = re.sub(r'\s*collection\s*$', '',
+                                 collection_data.get('extracted_title', ''),
+                                 flags=re.IGNORECASE)
+        score = fuzz.ratio(clean_name.lower(), clean_extracted.lower())
 
         if score > best_score:
             best_score = score
             best_match = {
-                'id': item_id,
-                'name': collection_name,
-                'year': collection_year,
-                'tmdb_id': tmdb_id,
-                'extracted_title': collection_name
+                'id': collection_id,
+                'name': collection_data.get('extracted_title', ''),
+                'year': collection_data.get('year'),
+                'tmdb_id': collection_id,
+                'extracted_title': collection_data.get('extracted_title', '')
             }
 
     if best_score >= 90:
@@ -112,6 +119,7 @@ def process_collection(file_path, language_data):
     matched_collection = find_collection_match(clean_name, language_data)
 
     if matched_collection:
+        # Use the extracted title from the match
         extracted_title = matched_collection['extracted_title']
         folder_name = sanitize_folder_name(extracted_title)
 
@@ -121,10 +129,9 @@ def process_collection(file_path, language_data):
         new_filename = "poster.jpg"
         new_file_path = os.path.join(new_folder, new_filename)
 
-        # If a file with the same name already exists, archive the existing content
+        # Archive existing content if necessary
         if os.path.exists(new_file_path):
             archive_existing_content(Path(new_folder))
-
 
         # Move the file to the new folder and rename it
         shutil.move(file_path, new_file_path)
@@ -281,7 +288,7 @@ def sanitize_folder_name(folder_name):
 
 def is_collection(filename):
     """Determine if a file is part of a collection based on its filename."""
-    return 'collection' in filename.lower() or 'filmreihe' in filename.lower()
+    return bool(re.search(r'collection|filmreihe', filename.lower()))
 
 
 def process_image_file(file_path, language_data):
@@ -293,10 +300,13 @@ def process_image_file(file_path, language_data):
     file_path = convert_to_jpg(file_path)
     filename = os.path.basename(file_path)
 
-    # Check if it's a background/backdrop image
-    is_background = any(term in filename.lower() for term in ['backdrop', 'background'])
+    # First check if it's a collection
+    if is_collection(filename):
+        logger.info(f"Detected collection file: {filename}")
+        return process_collection(file_path, language_data)
 
-    # Extract both name and year from filename
+    # If not a collection, continue with regular processing...
+    is_background = any(term in filename.lower() for term in ['backdrop', 'background'])
     clean_name_result = clean_name(filename)
     year_match = re.search(r'\((\d{4})\)', filename)
     year = year_match.group(1) if year_match else None
@@ -304,6 +314,7 @@ def process_image_file(file_path, language_data):
     matched_item = find_match(clean_name_result, language_data)
 
     if matched_item:
+        # Rest of the existing regular processing code...
         extracted_title = matched_item['extracted_title']
         original_title = matched_item.get('original_title', '')
         year = matched_item.get('year', '')
@@ -320,7 +331,6 @@ def process_image_file(file_path, language_data):
         new_folder = os.path.join(POSTER_DIR, folder_name)
         os.makedirs(new_folder, exist_ok=True)
 
-
         if is_background:
             new_filename = "background.jpg"
         elif re.search(r'S\d+\s*E\d+', filename):
@@ -336,7 +346,6 @@ def process_image_file(file_path, language_data):
 
         new_file_path = os.path.join(new_folder, new_filename)
 
-
         if os.path.exists(new_file_path):
             archive_existing_content(Path(new_folder))
 
@@ -346,13 +355,8 @@ def process_image_file(file_path, language_data):
     else:
         logger.warning(f"No match found for: {filename}")
         series_name, file_year = get_series_name(filename)
-
         year_to_use = year or file_year
-
-        # Get the timestamp folder name
         timestamp = get_timestamp_folder()
-
-        # Create the folder structure: NO_MATCH_FOLDER / Poster / series_name (year) / timestamp
         folder_name = f"{series_name} ({year_to_use})" if year_to_use else series_name
         no_match_folder = Path(NO_MATCH_FOLDER) / 'Poster' / folder_name / timestamp
         no_match_folder.mkdir(parents=True, exist_ok=True)
