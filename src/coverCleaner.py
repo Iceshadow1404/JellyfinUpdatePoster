@@ -522,37 +522,6 @@ def find_matching_folder(folder_name, language_data):
     return False, None
 
 
-def find_matching_folder(folder_name, language_data):
-    """Find a matching item in language data for the given folder name, handling both old and new folder formats."""
-    # Extract year from folder name if present
-    year_match = re.search(r'\((\d{4})\)', folder_name)
-    folder_year = year_match.group(1) if year_match else None
-
-    # Clean folder name (remove year for comparison)
-    clean_folder_name = clean_name(re.sub(r'\s*\(\d{4}\)', '', folder_name.lower()))
-
-    for category in ['movies', 'tv']:
-        for item_id, item_data in language_data.get(category, {}).items():
-            if item_id == 'last_updated':
-                continue
-
-            if 'extracted_title' in item_data:
-                clean_item_name = clean_name(item_data['extracted_title'].lower())
-                name_match = fuzz.ratio(clean_folder_name, clean_item_name) >= 90
-
-                # Wenn der Ordner ein Jahr hat, muss es übereinstimmen
-                if folder_year and 'year' in item_data:
-                    year_match = str(item_data['year']) == folder_year
-                    if name_match and year_match:
-                        return True, item_data
-
-                # Bei alten Ordnern ohne Jahr akzeptieren wir einen Namen-Match
-                elif not folder_year:
-                    if name_match:
-                        return True, item_data
-
-    return False, None
-
 
 def reprocess_unmatched_files(language_data):
     """Reprocess unmatched files after new content is added, handling both old and new folder formats."""

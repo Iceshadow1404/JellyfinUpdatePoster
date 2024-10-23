@@ -17,6 +17,7 @@ This Python-based application is designed to automate the management and organiz
 - 🎨 Colored logging for better visibility
 - 📊 Tracks missing and unused folders
 - 🪝 Webhook support to trigger manual poster updates
+- 📥 Mediux set downloader
 
 ## Prerequisites
 
@@ -158,6 +159,13 @@ Drop your image or .zip files into the `RawCover` folder.
 - Red for ERROR messages
 - Timestamped entries
 
+## Webhook Integration
+- When enabled, sends POST requests to http://your_ip:8080/trigger to manually trigger cover processing. 
+- Check status via GET request to /status.
+
+## Mediux Downloader
+- Simply paste a Mediux set link into the mediux.txt file
+
 ## Contributing
 
 1. Fork the repository
@@ -165,11 +173,6 @@ Drop your image or .zip files into the `RawCover` folder.
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
-
-## Webhook Integration
-
-- When enabled, sends POST requests to http://your_ip:8000/trigger to manually trigger cover processing. 
-- Check status via GET request to /status.
 
 ## Contact
 
