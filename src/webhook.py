@@ -11,7 +11,7 @@ class WebhookServer:
     def __init__(self):
         self.app = FastAPI()
         self.host = "0.0.0.0"
-        self.port = 8000
+        self.port = 8080
         self.webhook_trigger = False
         self.is_enabled = ENABLE_WEBHOOK
         self.setup_routes()
