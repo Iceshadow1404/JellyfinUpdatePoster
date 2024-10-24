@@ -123,12 +123,30 @@ def collect_titles():
     with open(OUTPUT_FILENAME, "r", encoding="utf-8") as file:
         media_items = json.load(file)
 
-    total_items = len(media_items)
-    count = 0
-
+    needed_requests = 0
     for item in media_items:
         tmdb_id = str(item.get("TMDbId")) if item.get("TMDbId") is not None else None
-        media_type = item.get("Type").lower()  # "movie", "series", or "boxset"
+        media_type = item.get("Type").lower()
+
+        # Bestimme die Kategorie
+        if media_type == "series":
+            category = "tv"
+        elif media_type == "movie":
+            category = "movies"
+        elif media_type == "boxset":
+            category = "collections"
+        else:
+            continue
+
+        if tmdb_id and tmdb_id not in processed_data[category]:
+            needed_requests += 1
+
+    logger.info(f"Found {len(media_items)} total items, {needed_requests} need TMDB API calls")
+
+    processed_count = 0
+    for item in media_items:
+        tmdb_id = str(item.get("TMDbId")) if item.get("TMDbId") is not None else None
+        media_type = item.get("Type").lower()
         title = item.get("Name", "Unknown Title")
         originaltitle = item.get("OriginalTitle", "Unknown Title")
         year = item.get("Year", "Unknown Year")
@@ -146,13 +164,12 @@ def collect_titles():
 
         # Skip if already processed
         if tmdb_id in processed_data[category]:
-            count += 1
             continue
 
-        count += 1
-        logger.info(f"Remaining TMDB API calls: {total_items - count}")
-
         if tmdb_id:
+            processed_count += 1
+            logger.info(f"Processing TMDB API call {processed_count}/{needed_requests}")
+
             # Map media types for TMDb API
             tmdb_type = "collection" if media_type == "boxset" else "tv" if media_type == "series" else "movie"
             titles = get_tmdb_titles(tmdb_id, tmdb_type)
