@@ -4,7 +4,7 @@ import logging
 import argparse
 import traceback
 
-from src.coverCleaner import cover_cleaner, reprocess_unmatched_files
+from src.coverCleaner import cover_cleaner, load_language_data
 from src.getIDs import get_jellyfin_content
 from src.detectContentChange import check_jellyfin_content
 from src.logging import setup_logging
@@ -15,6 +15,8 @@ from src.constants import RAW_COVER_DIR, MEDIUX_FILE
 from src.mediux_downloader import mediux_downloader
 from src.webhook import WebhookServer
 from src.config import ENABLE_WEBHOOK
+from src.rematchNoMatchFolder import FolderMatcher
+from src.cleanupEmptyFolder import cleanup_empty_folders
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +62,14 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     mediux = False
 
                 # Load language data
-                from src.coverCleaner import load_language_data
                 language_data = load_language_data()
 
-                # Reprocess unmatched files
-                reprocess_unmatched_files(language_data)
+                # Create FolderMatcher instance and reprocess unmatched files
+                folder_matcher = FolderMatcher(language_data)
+                folder_matcher.reprocess_unmatched_files()
+
+                # Clean up empty folders in NO_MATCH_FOLDER
+                cleanup_empty_folders()
 
                 if force:
                     logging.info("Force flag was set, resetting it to False after first iteration.")

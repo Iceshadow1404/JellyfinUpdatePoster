@@ -12,6 +12,7 @@ import json
 from datetime import datetime, timedelta
 
 from src.updateCover import UpdateCover
+from src.rematchNoMatchFolder import FolderMatcher
 from src.constants import LANGUAGE_DATA_FILENAME, RAW_COVER_DIR, COVER_DIR, COLLECTIONS_DIR, CONSUMED_DIR, \
     NO_MATCH_FOLDER, REPLACED_DIR, POSTER_DIR
 
@@ -491,103 +492,14 @@ def rename_file_for_archive(filename: str, dir_name: str) -> str:
         return f"{dir_name} - Backdrop.jpg"
     return filename
 
-
-def find_matching_folder(folder_name, language_data):
-    """Find a matching item in language data for the given folder name, handling both old and new folder formats."""
-    # Extract year from folder name if present
-    year_match = re.search(r'\((\d{4})\)', folder_name)
-    folder_year = year_match.group(1) if year_match else None
-
-    # Clean folder name (remove year for comparison)
-    clean_folder_name = clean_name(re.sub(r'\s*\(\d{4}\)', '', folder_name.lower()))
-
-    for category in ['movies', 'tv']:
-        for item_id, item_data in language_data.get(category, {}).items():
-            if item_id == 'last_updated':
-                continue
-
-            if 'extracted_title' in item_data:
-                clean_item_name = clean_name(item_data['extracted_title'].lower())
-                name_match = fuzz.ratio(clean_folder_name, clean_item_name) >= 90
-
-                if folder_year and 'year' in item_data:
-                    year_match = str(item_data['year']) == folder_year
-                    if name_match and year_match:
-                        return True, item_data
-
-                elif not folder_year:
-                    if name_match:
-                        return True, item_data
-
-    return False, None
-
-
-
-def reprocess_unmatched_files(language_data):
-    """Reprocess unmatched files after new content is added, handling both old and new folder formats."""
-    logger.info("Reprocessing unmatched files")
-
-    for subfolder in ['Collections', 'Poster']:
-        no_match_path = Path(NO_MATCH_FOLDER) / subfolder
-        if not no_match_path.exists():
-            continue
-
-        for series_folder in no_match_path.iterdir():
-            if not series_folder.is_dir():
-                continue
-
-            has_match, matched_item = find_matching_folder(series_folder.name, language_data)
-
-            if not has_match:
-                logger.info(f"No match found for {series_folder.name}, skipping.")
-                continue
-
-            logger.info(f"Match found for {series_folder.name}, processing...")
-
-            dated_subfolders = [f for f in series_folder.iterdir() if f.is_dir()]
-            if not dated_subfolders:
-                continue
-
-            newest_subfolder = max(dated_subfolders, key=lambda x: x.stat().st_mtime)
-
-            base_name = series_folder.name
-            if matched_item and 'year' in matched_item and not re.search(r'\(\d{4}\)', base_name):
-                base_name = f"{base_name} ({matched_item['year']})"
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            zip_filename = f"{base_name}_{timestamp}.zip"
-            zip_path = Path(RAW_COVER_DIR) / zip_filename
-
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for file in newest_subfolder.iterdir():
-                    if file.is_file():
-                        zipf.write(file, file.name)
-                        logger.info(f"Added {file.name} to {zip_filename}")
-
-            logger.info(f"Created zip file: {zip_filename}")
-
-            for file in newest_subfolder.iterdir():
-                if file.is_file():
-                    file.unlink()
-                    logger.info(f"Removed file: {file}")
-
-            if not any(newest_subfolder.iterdir()):
-                newest_subfolder.rmdir()
-                logger.info(f"Removed empty subfolder: {newest_subfolder}")
-
-            if not any(series_folder.iterdir()):
-                series_folder.rmdir()
-                logger.info(f"Removed empty series folder: {series_folder}")
-
-    logger.info("Finished reprocessing unmatched files")
-
-
 def cover_cleaner():
     global LAST_TIMESTAMP
     LAST_TIMESTAMP = None
-    """Main function to process all files in the RAW_COVER_FOLDER."""
+
     # Load language data
     language_data = load_language_data()
+
+    folder_matcher = FolderMatcher(language_data)
 
     files = os.listdir(RAW_COVER_DIR)
 
@@ -623,11 +535,9 @@ def cover_cleaner():
         # Refresh the directory lookup after processing all files
         updater.scan_directories()
         logger.info("Directory lookup refreshed after processing files")
+        folder_matcher.reprocess_unmatched_files()
     else:
         logger.info('No files found in the folder.')
-
-    # Reprocess unmatched files
-    reprocess_unmatched_files(language_data)
 
 
 if __name__ == "__main__":
