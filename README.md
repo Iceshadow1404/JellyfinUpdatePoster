@@ -41,7 +41,6 @@ services:
       - TMDB_API_KEY=your-tmdb-api-key
       - INCLUDE_EPISODES=false
       - TZ=Europe/Berlin
-      - chunk_size=400 # Load items in chunks to save memory. Higher value = faster, but more RAM usage
       - enable_webhook=false
     volumes:
       - ./your-local-path:/mount
@@ -74,7 +73,6 @@ JELLYFIN_URL=http://your-jellyfin-server:8096
 JELLYFIN_API_KEY=your-jellyfin-api-key
 TMDB_API_KEY=your-tmdb-api-key
 INCLUDE_EPISODES=false
-chunk_size=400 # Load items in chunks to save memory. Higher value = faster, but more RAM usage
 enable_webhook=false
 ```
 
