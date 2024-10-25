@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from collections import defaultdict, OrderedDict
 
-from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, chunk_size
+from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY
 from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER
 
 logger = logging.getLogger(__name__)
@@ -292,18 +292,15 @@ class UpdateCover:
             finally:
                 gc.collect()
 
-
     async def save_missing_folders(self):
         try:
             all_folders = set()
 
-            for chunk in self._chunk_iterator(POSTER_DIR.glob('*'), chunk_size):
-                all_folders.update(chunk)
-                gc.collect()
+            all_folders.update(POSTER_DIR.glob('*'))
+            gc.collect()
 
-            for chunk in self._chunk_iterator(COLLECTIONS_DIR.glob('*'), chunk_size):
-                all_folders.update(chunk)
-                gc.collect()
+            all_folders.update(COLLECTIONS_DIR.glob('*'))
+            gc.collect()
 
             self.extra_folders = list(all_folders - set(self.used_folders))
             gc.collect()
@@ -344,18 +341,6 @@ class UpdateCover:
             logger.info(f"Saved unused folders to {EXTRA_FOLDER}, but no missing folders.")
         else:
             logger.info("No missing or unused folders to save.")
-
-    @staticmethod
-    def _chunk_iterator(iterable, chunk_size):
-        chunk = []
-        for item in iterable:
-            chunk.append(item)
-            if len(chunk) >= chunk_size:
-                yield chunk
-                chunk = []
-                gc.collect()
-        if chunk:
-            yield chunk
 
     async def process_items(self):
         """Process items in parallel batches"""
