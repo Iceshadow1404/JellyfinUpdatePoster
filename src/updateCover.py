@@ -9,14 +9,50 @@ import gc
 import os
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, chunk_size
-from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER, \
-    COVER_DIR
+from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER
 
 logger = logging.getLogger(__name__)
 
+class LRUCache:
+    """Size-limited LRU cache for image data"""
+
+    def __init__(self, max_size_mb=1000):
+        self.max_size = max_size_mb * 1024 * 1024  # Convert MB to bytes
+        self.current_size = 0
+        self.cache = OrderedDict()
+
+    def get(self, key: str) -> Optional[bytes]:
+        if key in self.cache:
+            # Move to end (most recently used)
+            value = self.cache.pop(key)
+            self.cache[key] = value
+            return value
+        return None
+
+    def put(self, key: str, value: bytes):
+        # Remove oldest items if adding this would exceed max size
+        value_size = len(value)
+
+        if value_size > self.max_size:
+            logger.warning(f"Single item larger than cache size, skipping cache: {key}")
+            return
+
+        while self.cache and (self.current_size + value_size > self.max_size):
+            _, oldest_value = self.cache.popitem(last=False)
+            self.current_size -= len(oldest_value)
+
+        if key in self.cache:
+            self.current_size -= len(self.cache.pop(key))
+
+        self.cache[key] = value
+        self.current_size += value_size
+
+    def clear(self):
+        self.cache.clear()
+        self.current_size = 0
 
 class UpdateCover:
     def __init__(self):
@@ -26,8 +62,8 @@ class UpdateCover:
         self.extra_folders: List[Path] = []
         self.items_to_process: List[Dict] = []
         self.session: Optional[aiohttp.ClientSession] = None
-        self.file_cache: Dict[str, bytes] = {}
-        self.content_type_cache: Dict[str, str] = {}
+        self.semaphore = asyncio.Semaphore(10)  # Limit concurrent requests
+        self.batch_size = 20  # Number of items to process in parallel
 
     async def __aenter__(self):
         self.session = aiohttp.ClientSession()
@@ -36,6 +72,23 @@ class UpdateCover:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.session:
             await self.session.close()
+
+    async def read_image(self, image_path: Path) -> bytes:
+        """Read image data with caching"""
+        cache_key = str(image_path)
+        cached_data = self.image_cache.get(cache_key)
+
+        if cached_data:
+            return cached_data
+
+        try:
+            with image_path.open('rb') as file:
+                data = file.read()
+                self.image_cache.put(cache_key, data)
+                return data
+        except Exception as e:
+            logger.error(f"Error reading image {image_path}: {str(e)}")
+            raise
 
     async def initialize(self):
         """Initialize by scanning directories and loading items."""
@@ -57,6 +110,13 @@ class UpdateCover:
                     key = item_dir.name.lower()
                     result[key] = item_dir
             return result
+
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
+            for future in futures:
+                self.directory_lookup.update(future.result())
+
+        logger.info(f"Directory scan complete. Found {len(self.directory_lookup)} directories.")
 
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
@@ -139,11 +199,11 @@ class UpdateCover:
                 logger.warning(f"Image file not found: {image_path}. Skipping.")
                 return
 
-            # Cache image data
-            cache_key = str(image_path)
-            if cache_key not in self.file_cache:
+            # Read and encode image
+            async with self.semaphore:  # Limit concurrent file operations
                 with image_path.open('rb') as file:
-                    self.file_cache[cache_key] = b64encode(file.read())
+                    image_data = file.read()
+                encoded_data = b64encode(image_data)
 
             endpoint = f'/Items/{id}/Images/{image_type}/0'
             url = f"{JELLYFIN_URL}{endpoint}"
@@ -152,19 +212,23 @@ class UpdateCover:
                 'Content-Type': self.get_content_type(str(image_path))
             }
 
-            async with self.session.post(url, headers=headers, data=self.file_cache[cache_key]) as response:
-                response.raise_for_status()
-                display_name = item['Name']
-                log_message = f'Updated {image_type} image for {self.clean_name(display_name)}'
-                if extra_info:
-                    log_message += f' - {extra_info}'
-                logger.info(log_message + ' successfully.')
+            async with self.semaphore:  # Limit concurrent API requests
+                async with self.session.post(url, headers=headers, data=encoded_data) as response:
+                    response.raise_for_status()
+                    display_name = item['Name']
+                    log_message = f'Updated {image_type} image for {self.clean_name(display_name)}'
+                    if extra_info:
+                        log_message += f' - {extra_info}'
+                    logger.info(log_message + ' successfully.')
 
         except Exception as e:
             display_name = item['Name']
             logger.error(
                 f'Error updating {image_type} image for {self.clean_name(display_name)}'
                 f'{" - " + extra_info if extra_info else ""}. Error: {str(e)}')
+        finally:
+            del encoded_data
+            gc.collect()
 
     @lru_cache(maxsize=1000)
     def get_content_type(self, file_path: str) -> str:
@@ -176,43 +240,58 @@ class UpdateCover:
             'webp': 'image/webp'
         }.get(ext, 'application/octet-stream')
 
+
     async def process_item(self, item: Dict):
-        try:
-            item_dir = self.get_item_directory(item)
-            if not item_dir:
-                return
+            """Process a single item and its related images"""
+            try:
+                item_dir = self.get_item_directory(item)
+                if not item_dir:
+                    return
 
-            main_poster = self.find_image(item_dir, 'poster')
-            if main_poster:
-                await self.update_jellyfin(item['Id'], main_poster, item, 'Primary')
+                tasks = []
+
+                # Add main poster task
+                if (main_poster := self.find_image(item_dir, 'poster')):
+                    tasks.append(self.update_jellyfin(item['Id'], main_poster, item, 'Primary'))
+
+                # Add backdrop task
+                if (backdrop := self.find_image(item_dir, 'backdrop')):
+                    tasks.append(self.update_jellyfin(item['Id'], backdrop, item, 'Backdrop'))
+
+                # Add season and episode tasks
+                if 'Seasons' in item:
+                    for season_name, season_data in item['Seasons'].items():
+                        season_number = season_name.split()[-1]
+                        if (season_image := self.find_image(item_dir, f'Season{season_number.zfill(2)}')):
+                            tasks.append(self.update_jellyfin(
+                                season_data['Id'],
+                                season_image,
+                                item,
+                                'Primary',
+                                f'Season {season_number}'
+                            ))
+
+                        for episode_number, episode_id in season_data.get('Episodes', {}).items():
+                            if (episode_image := self.find_image(
+                                    item_dir,
+                                    f'S{season_number.zfill(2)}E{episode_number.zfill(2)}'
+                            )):
+                                tasks.append(self.update_jellyfin(
+                                    episode_id,
+                                    episode_image,
+                                    item,
+                                    'Primary',
+                                    f'S{season_number}E{episode_number}'
+                                ))
+
+                if tasks:
+                    await asyncio.gather(*tasks)
+
+            except Exception as e:
+                logger.error(f"Error processing item {item.get('Name', 'Unknown')}: {str(e)}")
+            finally:
                 gc.collect()
 
-            backdrop = self.find_image(item_dir, 'backdrop')
-            if backdrop:
-                await self.update_jellyfin(item['Id'], backdrop, item, 'Backdrop')
-                gc.collect()
-
-            if 'Seasons' in item:
-                for season_name, season_data in item['Seasons'].items():
-                    season_number = season_name.split()[-1]
-                    season_image = self.find_image(item_dir, f'Season{season_number.zfill(2)}')
-                    if season_image:
-                        await self.update_jellyfin(season_data['Id'], season_image, item, 'Primary',
-                                                   f'Season {season_number}')
-                        gc.collect()
-
-                    for episode_number, episode_id in season_data.get('Episodes', {}).items():
-                        episode_image = self.find_image(item_dir,
-                                                        f'S{season_number.zfill(2)}E{episode_number.zfill(2)}')
-                        if episode_image:
-                            await self.update_jellyfin(episode_id, episode_image, item, 'Primary',
-                                                       f'S{season_number}E{episode_number}')
-                            gc.collect()
-
-        except Exception as e:
-            logger.error(f"Error processing item {item.get('Name', 'Unknown')}: {str(e)}")
-        finally:
-            gc.collect()
 
     async def save_missing_folders(self):
         try:
@@ -279,19 +358,15 @@ class UpdateCover:
             yield chunk
 
     async def process_items(self):
-        """Process items using improved concurrent processing"""
+        """Process items in parallel batches"""
         logger.info(f"Starting to process {len(self.items_to_process)} items...")
 
-        # Group items by series to process related items together
-        series_groups = defaultdict(list)
-        for item in self.items_to_process:
-            series_id = item.get('SeriesId', item['Id'])
-            series_groups[series_id].append(item)
-
-        # Process groups concurrently
-        async with asyncio.TaskGroup() as tg:
-            for items in series_groups.values():
-                tg.create_task(self._process_item_group(items))
+        # Process items in batches
+        for i in range(0, len(self.items_to_process), self.batch_size):
+            batch = self.items_to_process[i:i + self.batch_size]
+            tasks = [self.process_item(item) for item in batch]
+            await asyncio.gather(*tasks)
+            gc.collect()
 
     async def _process_item_group(self, items: List[Dict]):
         """Process a group of related items"""
@@ -338,21 +413,17 @@ class UpdateCover:
                 logger.error(f"Error processing item {item.get('Name', 'Unknown')}: {str(e)}")
 
     async def run(self):
-        """Main execution method with improved resource management"""
+        """Main execution method"""
         try:
-            async with self:  # Use context manager for session management
-                await self.initialize()
-                await self.process_items()
-                await self.save_missing_folders()
+            await self.initialize()
+            await self.process_items()
+            await self.save_missing_folders()
         except Exception as e:
             logger.error(f"Error in run method: {str(e)}")
         finally:
-            # Clear caches
-            self.file_cache.clear()
             self.clean_name.cache_clear()
-            self.get_content_type.cache_clear()
             gc.collect()
-            logger.info("Process completed. Memory cleanup finished.")
+            logger.info("Process completed.")
 
 
 if __name__ == "__main__":

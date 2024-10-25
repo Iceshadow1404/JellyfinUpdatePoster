@@ -3,6 +3,7 @@ import os
 import logging
 import argparse
 import traceback
+import gc
 
 from src.coverCleaner import cover_cleaner, load_language_data
 from src.getIDs import get_jellyfin_content
@@ -22,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 async def main_loop(force: bool, webhook_server: WebhookServer):
-    updater = UpdateCover()
+    # Initialize UpdateCover with custom cache size
+    updater = UpdateCover()  # Adjust cache size as needed
 
     while True:
         try:
@@ -75,9 +77,14 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     logging.info("Force flag was set, resetting it to False after first iteration.")
                     force = False
 
-                updater.scan_directories()
-                logging.info('Run the UpdateCover process')
-                await updater.run()
+                # Use context manager for UpdateCover
+                async with updater:
+                    await updater.initialize()
+                    logging.info('Run the UpdateCover process')
+                    await updater.run()
+
+                # Explicit cleanup after processing
+                gc.collect()
             else:
                 logging.info('Found no files or new content on Jellyfin')
 
