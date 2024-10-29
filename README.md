@@ -4,27 +4,22 @@ This Python-based application is designed to automate the management and organiz
 
 ## Features
 
-- 🖼️ Automated cover art processing and organization with smart folder structure
-- 📦 ZIP file support for batch processing (ThePosterDB, MediUX)
-- 🔄 Auto-matching with Jellyfin content using fuzzy logic
-- 📁 Separate handling for movies, TV shows, collections
-- 🔍 Management of unmatched content and automatic reprocessing
-- 📋 Blacklist system for problematic entries or libraries
-- 🌐 Multi-language title support (TMDb API)
-- 🎨 Supports multiple image formats (PNG, JPG, JPEG, WebP)
-- 📺 Movie, TV show, season, episode, and backdrop image management
-- 🔄 Content change detection for Jellyfin libraries
-- 🎨 Colored logging for better visibility
-- 📊 Tracks missing and unused folders
-- 🪝 Webhook support to trigger manual poster updates
-- 📥 Mediux set downloader
+-  ZIP file support for batch processing (ThePosterDB, MediUX)
+-  Management of unmatched content and automatic reprocessing
+-  Blacklist system for problematic entries or libraries
+-  Multi-language title support (TMDb API)
+-  Movie, TV show, season, episode, and backdrop image management
+-  Content change detection for Jellyfin libraries
+-  Tracks missing and unused folders
+-  Webhook support to trigger manual poster updates
+-  Mediux set downloader
 
 ## Prerequisites
 
 - Python 3.12+ (if running locally)
 - Docker and Docker Compose (if running containerized)
 - Jellyfin server
-- TMDb API key
+- [TMDb API key](https://developer.themoviedb.org/docs/getting-started)
 
 ## Installation
 
@@ -136,41 +131,22 @@ Drop your image or .zip files into the `RawCover` folder.
 
 ### Multi-Language Support
 - Fetches titles from TMDb in multiple languages (English, German, and alternative titles)
-- Caches title data for 7 days to reduce API calls
 - Handles both original titles and localized versions
 
 ### Content Change Detection
 - Monitors Jellyfin library for new or modified content
-- Tracks content IDs for movies, seasons, and collections
 - Automatically triggers updates when changes are detected
 
 ### Image Management
 - Supports multiple image types (Movie, TV show, season, episode, and backdrop)
-- Maintains clean folder structure
 - Tracks missing and unused folders
-- Supports various image formats (PNG, JPG, JPEG, WebP)
-
-### Logging System
-- Color-coded console output for different log levels
-- Green for INFO messages
-- Yellow for WARNING messages
-- Red for ERROR messages
-- Timestamped entries
-
+ 
 ## Webhook Integration
 - When enabled, sends POST requests to http://your_ip:8080/trigger to manually trigger cover processing. 
 - Check status via GET request to /status.
 
 ## Mediux Downloader
 - Simply paste a Mediux set link into the mediux.txt file
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
 ## Contact
 
@@ -179,8 +155,3 @@ Drop your image or .zip files into the `RawCover` folder.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built for use with [Jellyfin](https://jellyfin.org/)
-- Uses [TMDb](https://www.themoviedb.org/) for multi-language support
