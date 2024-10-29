@@ -111,11 +111,16 @@ def find_collection_match(clean_name, language_data):
 
 
 def process_collection(file_path, language_data):
-    """Process a collection image file."""
+    """Process a collection image file, supporting both posters and backgrounds/backdrops."""
     filename = os.path.basename(file_path)
     logger.info(f"Processing collection image file: {filename}")
 
-    clean_name = clean_name_for_folder(os.path.splitext(filename)[0])
+    # Determine if this is a background/backdrop image
+    is_background = any(term in filename.lower() for term in ['backdrop', 'background'])
+
+    # Clean name should exclude backdrop/background indicators for matching
+    base_name = re.sub(r'\s*-?\s*(Backdrop|Background)', '', filename, flags=re.IGNORECASE)
+    clean_name = clean_name_for_folder(os.path.splitext(base_name)[0])
     matched_collection = find_collection_match(clean_name, language_data)
 
     if matched_collection:
@@ -126,7 +131,12 @@ def process_collection(file_path, language_data):
         new_folder = os.path.join(COLLECTIONS_DIR, folder_name)
         os.makedirs(new_folder, exist_ok=True)
 
-        new_filename = "poster.jpg"
+        # Determine the appropriate filename based on whether it's a background
+        if is_background:
+            new_filename = "background.jpg"
+        else:
+            new_filename = "poster.jpg"
+
         new_file_path = os.path.join(new_folder, new_filename)
 
         # Archive existing content if necessary
@@ -140,8 +150,9 @@ def process_collection(file_path, language_data):
         return new_file_path
     else:
         logger.warning(f"No match found for collection: {filename}")
-        # Pass is_collection=True to ensure it goes to the Collections subfolder
-        return process_unmatched_file(file_path, clean_name, year=None, is_collection=True)
+        # Get the base name without backdrop/background indicator for the folder name
+        base_name = re.sub(r'\s*-?\s*(Backdrop|Background)', '', clean_name, flags=re.IGNORECASE)
+        return process_unmatched_file(file_path, base_name, year=None, is_collection=True)
 
 
 def process_unmatched_file(file_path, clean_name, year=None, is_collection=False):
