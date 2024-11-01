@@ -172,7 +172,7 @@ def process_unmatched_file(file_path, clean_name, year=None, is_collection=False
 
 
 def clean_name(filename):
-    """Clean the filename by removing season, episode, and specials information, but preserving the year."""
+    """Clean the filename by removing season, episode, specials information, but preserving the year."""
     logger.debug(f"Cleaning name for: {filename}")
     name = os.path.splitext(filename)[0]
     name = re.sub(r'\s*-\s*S\d+\s*E\d+', '', name)
@@ -180,6 +180,7 @@ def clean_name(filename):
     name = re.sub(r'\s*-\s*Specials', '', name)
     name = re.sub(r'\s*-\s*Backdrop', '', name)
     name = re.sub(r'\s*-\s*Background', '', name)
+    name = re.sub(r':', '', name)
     cleaned_name = name.strip()
     logger.debug(f"Cleaned name: {cleaned_name}")
     return cleaned_name

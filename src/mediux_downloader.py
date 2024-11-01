@@ -16,16 +16,7 @@ from src.logging import logging
 from src.constants import RAW_COVER_DIR, MEDIUX_FILE
 from src.coverCleaner import clean_name
 
-
 logger = logging.getLogger(__name__)
-
-
-
-extension = 'jpg'
-format = 'JPEG'
-
-download_episode_covers = True
-
 
 async def mediux_downloader():
     downloaded_files = defaultdict(list)
@@ -50,18 +41,12 @@ async def mediux_downloader():
         zip_filename = f"{set_name}_{index + 1}.zip"
         logging.info(f'Saving all set images to {zip_filename}')
         with zipfile.ZipFile(RAW_COVER_DIR / zip_filename, 'w') as zf:
-            await download_images(files, zf)
+            await download_images(files, zf, set_name)
         downloaded_files[series_name].append(zip_filename)
         logging.info(f"All images downloaded for URL {index + 1}!")
 
-    for series_name, zip_files in downloaded_files.items():
-        if len(zip_files) > 1:
-            merge_zip_files(zip_files, series_name)
-        else:
-            logging.info(f"Only one ZIP file for {series_name}, no merging needed.")
     with open(MEDIUX_FILE, 'w') as file:
-        logging.info("Reset mediux.txt")
-
+       pass
 
 def get_set_name(set_data):
     if set_data.get('show'):
@@ -102,16 +87,17 @@ def merge_zip_files(zip_files, series_name):
     logging.info(f"Original ZIP files for {series_name} removed.")
 
 
-async def download_images(file_collection, zf: zipfile.ZipFile):
+async def download_images(file_collection, zf: zipfile.ZipFile, set_name: str):
     async with ClientSession() as session:
         tasks = []
         for file in file_collection:
-            file_title = file['title'].strip()
-            if not download_episode_covers and re.search(r'S\d+ E\d+', file_title):
-                logging.info(f'Skipping episode cover: {file_title}')
-                continue
+            # Handle backdrop file type
+            if file.get('fileType') == 'backdrop':
+                file_title = f"{set_name} - Background"
+            else:
+                file_title = file['title'].strip()
 
-            file_name = file_title + "." + extension
+            file_name = file_title + ".jpg"
             file_url = 'https://api.mediux.pro/assets/' + file["id"]
 
             logging.info(f'Queuing download for {file_title} from {file_url}')
@@ -150,10 +136,10 @@ async def download_and_save_image(session: ClientSession, file_url: str, file_na
         if response.status == 200:
             source_bytes = await response.read()
             img = Image.open(io.BytesIO(source_bytes))
-            if img.format != format:
+            if img.format != 'JPEG':
                 img = img.convert('RGB')
             with zf.open(file_name, 'w') as fp:
-                img.save(fp, format)
+                img.save(fp, 'JPEG')
             logging.info(f'Downloaded and saved {file_name}')
         else:
             logging.info(f'Failed to download {file_name}. Status code: {response.status}',success=False)
