@@ -82,43 +82,34 @@ def load_processed_data():
                 return {
                     'movies': {},
                     'tv': {},
-                    'collections': {},
-                    'last_updated': data.get('last_updated', datetime.now().isoformat())
+                    'collections': {}
                 }
+            # Remove global last_updated if it exists
+            if 'last_updated' in data:
+                del data['last_updated']
             return data
     except FileNotFoundError:
         return {
             'movies': {},
             'tv': {},
-            'collections': {},
-            'last_updated': datetime.now().isoformat()
+            'collections': {}
         }
 
 # Save processed data to the file with the last update time
 def save_processed_data(data):
-    data['last_updated'] = datetime.now().isoformat()
     with open(LANGUAGE_DATA_FILENAME, "w", encoding="utf-8") as outfile:
         json.dump(data, outfile, indent=4, ensure_ascii=False)
 
 # Check if the cache is still valid
-def is_cache_valid(data):
-    if 'last_updated' in data:
-        last_updated = datetime.fromisoformat(data['last_updated'])
+def is_entry_cache_valid(entry):
+    if 'last_updated' in entry:
+        last_updated = datetime.fromisoformat(entry['last_updated'])
         return datetime.now() - last_updated < timedelta(days=CACHE_EXPIRY_DAYS)
     return False
 
 # Main function
 def collect_titles():
     processed_data = load_processed_data()
-
-    if not is_cache_valid(processed_data):
-        logger.warning("Cache is outdated, refreshing data...")
-        processed_data = {
-            'movies': {},
-            'tv': {},
-            'collections': {},
-            'last_updated': datetime.now().isoformat()
-        }
 
     with open(OUTPUT_FILENAME, "r", encoding="utf-8") as file:
         media_items = json.load(file)
@@ -128,7 +119,6 @@ def collect_titles():
         tmdb_id = str(item.get("TMDbId")) if item.get("TMDbId") is not None else None
         media_type = item.get("Type").lower()
 
-        # Bestimme die Kategorie
         if media_type == "series":
             category = "tv"
         elif media_type == "movie":
@@ -138,8 +128,14 @@ def collect_titles():
         else:
             continue
 
-        if tmdb_id and tmdb_id not in processed_data[category]:
-            needed_requests += 1
+        # Check if entry needs updating
+        if tmdb_id:
+            if tmdb_id not in processed_data[category] or not is_entry_cache_valid(processed_data[category][tmdb_id]):
+                needed_requests += 1
+        else:
+            title = item.get("Name", "Unknown Title")
+            if title not in processed_data[category] or not is_entry_cache_valid(processed_data[category][title]):
+                needed_requests += 1
 
     logger.info(f"Found {len(media_items)} total items, {needed_requests} need TMDB API calls")
 
@@ -151,7 +147,6 @@ def collect_titles():
         originaltitle = item.get("OriginalTitle", "Unknown Title")
         year = item.get("Year", "Unknown Year")
 
-        # Map media types to correct categories
         if media_type == "series":
             category = "tv"
         elif media_type == "movie":
@@ -162,15 +157,16 @@ def collect_titles():
             logger.warning(f"Unknown media type: {media_type}")
             continue
 
-        # Skip if already processed
-        if tmdb_id in processed_data[category]:
+        entry_key = tmdb_id if tmdb_id else title
+
+        # Skip if entry exists and cache is still valid
+        if entry_key in processed_data[category] and is_entry_cache_valid(processed_data[category][entry_key]):
             continue
 
         if tmdb_id:
             processed_count += 1
             logger.info(f"Processing TMDB API call {processed_count}/{needed_requests}")
 
-            # Map media types for TMDb API
             tmdb_type = "collection" if media_type == "boxset" else "tv" if media_type == "series" else "movie"
             titles = get_tmdb_titles(tmdb_id, tmdb_type)
 
@@ -179,7 +175,8 @@ def collect_titles():
                     "titles": titles,
                     "extracted_title": title,
                     "year": year,
-                    "type": media_type
+                    "type": media_type,
+                    "last_updated": datetime.now().isoformat()
                 }
 
                 if media_type != "boxset":
@@ -191,7 +188,8 @@ def collect_titles():
                     "extracted_title": title,
                     "originaltitle": originaltitle,
                     "year": year,
-                    "type": media_type
+                    "type": media_type,
+                    "last_updated": datetime.now().isoformat()
                 }
 
             sleep(0.1)
@@ -201,13 +199,16 @@ def collect_titles():
                 "titles": [title],
                 "extracted_title": title,
                 "year": year,
-                "type": media_type
+                "type": media_type,
+                "last_updated": datetime.now().isoformat()
             }
 
             if media_type != "boxset":
                 processed_data[category][title]["originaltitle"] = originaltitle
 
+        # Save after each update to prevent data loss
         save_processed_data(processed_data)
+
 
 if __name__ == "__main__":
     collect_titles()
