@@ -544,10 +544,10 @@ def cover_cleaner():
                 if os.path.exists(original_file_path):
                     move_to_consumed(original_file_path)
 
-        # Refresh the directory lookup after processing all files
-        updater.scan_directories()
         logger.info("Directory lookup refreshed after processing files")
         folder_matcher.reprocess_unmatched_files()
+        # Refresh the directory lookup after processing all files
+        updater.scan_directories()
     else:
         logger.info('No files found in the folder.')
 
