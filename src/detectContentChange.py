@@ -50,8 +50,13 @@ def check_jellyfin_content():
 
                 logging.info(f'Old IDs: {len(old_ids)}')
                 logging.info(f'New IDs: {len(new_ids)}')
-                save_content_ids(new_ids)
-                return True
+
+                processed_items = get_jellyfin_content()
+
+                if processed_items:
+                    save_content_ids(new_ids)
+                    return True
+                return False
             else:
                 logging.info('No changes detected in Jellyfin content.')
                 return False
