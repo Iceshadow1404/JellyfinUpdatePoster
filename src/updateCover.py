@@ -93,10 +93,12 @@ class UpdateCover:
     async def initialize(self):
         """Initialize by scanning directories and loading items."""
         logger.info("Starting initialization...")
+        self.missing_folders = []
         self.scan_directories()
         await self.load_items()
         logger.info(
             f"Initialization complete. Found {len(self.directory_lookup)} directories and {len(self.items_to_process)} items to process.")
+
 
     def scan_directories(self):
         """Optimized directory scanning using ThreadPoolExecutor for I/O operations"""
@@ -192,12 +194,45 @@ class UpdateCover:
                 return image_path
         return None
 
+    async def delete_all_backdrops(self, item_id: str, item: Dict):
+        """Delete all existing backdrop images for an item"""
+        try:
+            # First get all images for the item
+            url = f"{JELLYFIN_URL}/Items/{item_id}/Images"
+            headers = {'X-Emby-Token': API_KEY}
+
+            async with self.semaphore:
+                async with self.session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    images = await response.json()
+
+                    # Filter for backdrop images
+                    backdrop_images = [img for img in images if img.get('ImageType') == 'Backdrop']
+
+                    # Delete each backdrop
+                    for image in backdrop_images:
+                        delete_url = f"{JELLYFIN_URL}/Items/{item_id}/Images/Backdrop/{image.get('ImageIndex')}"
+                        async with self.session.delete(delete_url, headers=headers) as delete_response:
+                            delete_response.raise_for_status()
+                            logger.debug(f"Deleted backdrop {image.get('ImageIndex')} for {item.get('Name')}")
+
+                    if backdrop_images:
+                        logger.info(f"Deleted {len(backdrop_images)} existing backdrops for {item.get('Name')}")
+
+        except Exception as e:
+            logger.error(f"Error deleting backdrops for {item.get('Name')}: {str(e)}")
+
     async def update_jellyfin(self, id: str, image_path: Path, item: Dict, image_type: str = 'Primary',
-                            extra_info: str = ''):
+                            extra_info: str = '', delete_existing: bool = False):
+        """Updated update_jellyfin method with delete_existing parameter"""
         try:
             if not image_path.exists():
                 logger.warning(f"Image file not found: {image_path}. Skipping.")
                 return
+
+            # If this is a backdrop and delete_existing is True, delete all existing backdrops first
+            if image_type == 'Backdrop' and delete_existing:
+                await self.delete_all_backdrops(id, item)
 
             # Read and encode image
             async with self.semaphore:  # Limit concurrent file operations
@@ -230,6 +265,7 @@ class UpdateCover:
             del encoded_data
             gc.collect()
 
+
     @lru_cache(maxsize=1000)
     def get_content_type(self, file_path: str) -> str:
         ext = file_path.split('.')[-1].lower()
@@ -242,58 +278,73 @@ class UpdateCover:
 
 
     async def process_item(self, item: Dict):
-            """Process a single item and its related images"""
-            try:
-                item_dir = self.get_item_directory(item)
-                if not item_dir:
-                    return
+        """Process a single item and its related images"""
+        try:
+            item_dir = self.get_item_directory(item)
+            if not item_dir:
+                return
 
-                tasks = []
+            tasks = []
 
-                # Add main poster task
-                if (main_poster := self.find_image(item_dir, 'poster')):
-                    tasks.append(self.update_jellyfin(item['Id'], main_poster, item, 'Primary'))
+            # Add main poster task
+            if (main_poster := self.find_image(item_dir, 'poster')):
+                tasks.append(self.update_jellyfin(item['Id'], main_poster, item, 'Primary'))
 
-                # Add backdrop task
-                if (backdrop := self.find_image(item_dir, 'backdrop')):
-                    tasks.append(self.update_jellyfin(item['Id'], backdrop, item, 'Backdrop'))
+            # Add backdrop task - check for both 'backdrop' and 'background'
+            backdrop = self.find_image(item_dir, 'backdrop') or self.find_image(item_dir, 'background')
+            if backdrop:
+                tasks.append(self.update_jellyfin(
+                    item['Id'],
+                    backdrop,
+                    item,
+                    'Backdrop',
+                    delete_existing=True
+                ))
 
-                # Add season and episode tasks
-                if 'Seasons' in item:
-                    for season_name, season_data in item['Seasons'].items():
-                        season_number = season_name.split()[-1]
-                        if (season_image := self.find_image(item_dir, f'Season{season_number.zfill(2)}')):
+            # Add season and episode tasks
+            if 'Seasons' in item:
+                for season_name, season_data in item['Seasons'].items():
+                    season_number = season_name.split()[-1]
+                    if (season_image := self.find_image(item_dir, f'Season{season_number.zfill(2)}')):
+                        tasks.append(self.update_jellyfin(
+                            season_data['Id'],
+                            season_image,
+                            item,
+                            'Primary',
+                            f'Season {season_number}'
+                        ))
+
+                    for episode_number, episode_id in season_data.get('Episodes', {}).items():
+                        if (episode_image := self.find_image(
+                                item_dir,
+                                f'S{season_number.zfill(2)}E{episode_number.zfill(2)}'
+                        )):
                             tasks.append(self.update_jellyfin(
-                                season_data['Id'],
-                                season_image,
+                                episode_id,
+                                episode_image,
                                 item,
                                 'Primary',
-                                f'Season {season_number}'
+                                f'S{season_number}E{episode_number}'
                             ))
 
-                        for episode_number, episode_id in season_data.get('Episodes', {}).items():
-                            if (episode_image := self.find_image(
-                                    item_dir,
-                                    f'S{season_number.zfill(2)}E{episode_number.zfill(2)}'
-                            )):
-                                tasks.append(self.update_jellyfin(
-                                    episode_id,
-                                    episode_image,
-                                    item,
-                                    'Primary',
-                                    f'S{season_number}E{episode_number}'
-                                ))
+            if tasks:
+                await asyncio.gather(*tasks)
 
-                if tasks:
-                    await asyncio.gather(*tasks)
+        except Exception as e:
+            logger.error(f"Error processing item {item.get('Name', 'Unknown')}: {str(e)}")
+        finally:
+            gc.collect()
 
-            except Exception as e:
-                logger.error(f"Error processing item {item.get('Name', 'Unknown')}: {str(e)}")
-            finally:
-                gc.collect()
 
     async def save_missing_folders(self):
+        """Save missing and extra folders to their respective files"""
         try:
+            # Clear existing files first
+            if os.path.exists(MISSING):
+                os.remove(MISSING)
+            if os.path.exists(EXTRA_FOLDER):
+                os.remove(EXTRA_FOLDER)
+
             all_folders = set()
 
             all_folders.update(POSTER_DIR.glob('*'))
@@ -305,28 +356,26 @@ class UpdateCover:
             self.extra_folders = list(all_folders - set(self.used_folders))
             gc.collect()
 
+            # Only create files if there's content to write
             if self.missing_folders:
                 with open(MISSING, 'w', encoding='utf-8') as f:
-                    for folder in self.missing_folders:
+                    for folder in sorted(set(self.missing_folders)):  # Remove duplicates and sort
                         f.write(f"{folder}\n")
-
-            if os.path.exists(MISSING) and os.path.getsize(MISSING) == 0:
-                os.remove(MISSING)
 
             if self.extra_folders:
                 with open(EXTRA_FOLDER, 'w', encoding='utf-8') as f:
                     for folder in self.extra_folders:
                         f.write(f"Didn't use Folder: {folder}\n")
 
-            if os.path.exists(EXTRA_FOLDER) and os.path.getsize(EXTRA_FOLDER) == 0:
-                os.remove(EXTRA_FOLDER)
-
             self._log_results()
 
         except Exception as e:
             logger.error(f"Error in save_missing_folders: {str(e)}")
         finally:
+            # Clear the missing_folders list after saving
+            self.missing_folders = []
             gc.collect()
+
 
     def _log_results(self):
         """Log the results of the missing and extra folders check."""
@@ -353,50 +402,6 @@ class UpdateCover:
             await asyncio.gather(*tasks)
             gc.collect()
 
-    async def _process_item_group(self, items: List[Dict]):
-        """Process a group of related items"""
-        for item in items:
-            try:
-                item_dir = self.get_item_directory(item)
-                if not item_dir:
-                    continue
-
-                # Process all images for this item concurrently
-                async with asyncio.TaskGroup() as tg:
-                    if (main_poster := self.find_image(item_dir, 'poster')):
-                        tg.create_task(self.update_jellyfin(item['Id'], main_poster, item, 'Primary'))
-
-                    if (backdrop := self.find_image(item_dir, 'backdrop')):
-                        tg.create_task(self.update_jellyfin(item['Id'], backdrop, item, 'Backdrop'))
-
-                    if 'Seasons' in item:
-                        for season_name, season_data in item['Seasons'].items():
-                            season_number = season_name.split()[-1]
-                            if (season_image := self.find_image(item_dir, f'Season{season_number.zfill(2)}')):
-                                tg.create_task(self.update_jellyfin(
-                                    season_data['Id'],
-                                    season_image,
-                                    item,
-                                    'Primary',
-                                    f'Season {season_number}'
-                                ))
-
-                            for episode_number, episode_id in season_data.get('Episodes', {}).items():
-                                if (episode_image := self.find_image(
-                                        item_dir,
-                                        f'S{season_number.zfill(2)}E{episode_number.zfill(2)}'
-                                )):
-                                    tg.create_task(self.update_jellyfin(
-                                        episode_id,
-                                        episode_image,
-                                        item,
-                                        'Primary',
-                                        f'S{season_number}E{episode_number}'
-                                    ))
-
-            except Exception as e:
-                logger.error(f"Error processing item {item.get('Name', 'Unknown')}: {str(e)}")
-
     async def run(self):
         """Main execution method"""
         try:
@@ -407,6 +412,7 @@ class UpdateCover:
             logger.error(f"Error in run method: {str(e)}")
         finally:
             self.clean_name.cache_clear()
+            self.missing_folders = []
             gc.collect()
             logger.info("Process completed.")
 

@@ -21,7 +21,7 @@ def cleanup_empty_folders(start_path: Path = Path(NO_MATCH_FOLDER)) -> None:
             current_dir = Path(dirpath)
 
             # Skip if this is the NO_MATCH_FOLDER root directory
-            if current_dir == Path(NO_MATCH_FOLDER):
+            if current_dir == Path(start_path):
                 continue
 
             try:
