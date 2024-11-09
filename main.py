@@ -50,10 +50,9 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
 
-                if force:
-                    get_jellyfin_content()
-                    collect_titles()
-                    update_output_file()
+                get_jellyfin_content()
+                collect_titles()
+                update_output_file()
 
                 if files or mediux:
                     if mediux:
