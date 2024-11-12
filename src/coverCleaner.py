@@ -6,10 +6,9 @@ import requests
 from fuzzywuzzy import fuzz
 import logging
 from PIL import Image
-from datetime import datetime
-from pathlib import Path
-import json
 from datetime import datetime, timedelta
+import json
+from pathlib import Path
 
 from src.updateCover import UpdateCover
 from src.rematchNoMatchFolder import FolderMatcher
@@ -33,13 +32,15 @@ def load_language_data():
         logger.error(f"Error decoding JSON from language data file: {LANGUAGE_DATA_FILENAME}")
         return {}
 
-
 def convert_to_jpg(file_path):
     """Convert image to JPG format if it's not already."""
     filename, file_extension = os.path.splitext(file_path)
     if file_extension.lower() not in ['.jpg', '.jpeg']:
         try:
             with Image.open(file_path) as img:
+                # Remove XMP metadata to prevent "XMP data is too long" error
+                img.info.pop('xmp', None)
+                
                 rgb_img = img.convert('RGB')
                 new_file_path = f"{filename}.jpg"
                 rgb_img.save(new_file_path, 'JPEG')
@@ -47,6 +48,7 @@ def convert_to_jpg(file_path):
             return new_file_path
         except Exception as e:
             logger.error(f"Error converting {file_path} to JPG: {str(e)}")
+            # If conversion fails, return the original file path
             return file_path
     elif file_extension.lower() == '.jpeg':
         new_file_path = f"{filename}.jpg"
