@@ -14,7 +14,7 @@ from collections import defaultdict, OrderedDict
 import psutil
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY
-from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER
+from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER, LANGUAGE_DATA_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -196,19 +196,45 @@ class UpdateCover:
 
     def get_item_directory(self, item: Dict) -> Optional[Path]:
         item_type = item.get('Type', 'Series' if 'Seasons' in item else 'Movie')
-        item_name = self.clean_name(item.get('Name', '').strip())
-        item_original_title = self.clean_name(item.get('OriginalTitle', item_name).strip())
+        tmdb_id = str(item.get('TMDbId')) if item.get('TMDbId') else None
+        
+        # Load language data
+        try:
+            with open(LANGUAGE_DATA_FILENAME, 'r', encoding='utf-8') as f:
+                language_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            logger.error(f"Error loading language data from {LANGUAGE_DATA_FILENAME}")
+            return None
+
+        # Determine category based on item type
+        if item_type == "BoxSet":
+            category = "collections"
+        elif item_type == "Series":
+            category = "tv"
+        else:
+            category = "movies"
+
+        # Get titles from language data if available
+        if tmdb_id and tmdb_id in language_data.get(category, {}):
+            item_data = language_data[category][tmdb_id]
+            extracted_title = self.clean_name(item_data.get('extracted_title', '').strip())
+            original_title = self.clean_name(item_data.get('originaltitle', '').strip())
+        else:
+            # Fallback to item names if not found in language data
+            extracted_title = self.clean_name(item.get('Name', '').strip())
+            original_title = self.clean_name(item.get('OriginalTitle', extracted_title).strip())
+
         item_year = item.get('Year')
 
         possible_keys = []
         if item_type == "BoxSet":
             possible_keys = [
-                item_name.lower(),
+                extracted_title.lower(),
             ]
         else:
             possible_keys = [
-                f"{item_original_title} ({item_year})".lower(),
-                f"{item_name} ({item_year})".lower()
+                f"{original_title} ({item_year})".lower(),
+                f"{extracted_title} ({item_year})".lower()
             ]
 
         for key in possible_keys:
@@ -224,11 +250,11 @@ class UpdateCover:
         base_dir = COLLECTIONS_DIR if item_type == "BoxSet" else POSTER_DIR
 
         if base_dir == COLLECTIONS_DIR:
-            missing_name = f"{item_original_title}" if item_original_title and not any(
-                ord(char) > 127 for char in item_original_title) else f"{item_name}"
+            missing_name = f"{original_title}" if original_title and not any(
+                ord(char) > 127 for char in original_title) else f"{extracted_title}"
         else:
-            missing_name = f"{item_original_title} ({item_year})" if item_original_title and not any(
-                ord(char) > 127 for char in item_original_title) else f"{item_name} ({item_year})"
+            missing_name = f"{original_title} ({item_year})" if original_title and not any(
+                ord(char) > 127 for char in original_title) else f"{extracted_title} ({item_year})"
 
         missing_folder = f"Folder not found: {base_dir / missing_name}"
         self.missing_folders.append(missing_folder)
