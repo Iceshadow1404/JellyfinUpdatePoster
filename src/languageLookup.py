@@ -137,8 +137,8 @@ def collect_titles():
             if title not in processed_data[category] or not is_entry_cache_valid(processed_data[category][title]):
                 needed_requests += 1
 
-    if  needed_requests != 0:
-        logger.info(f"Found {len(media_items)} total items, {len(needed_requests)} need TMDB API calls")
+    if int(needed_requests) != 0:
+        logger.info(f"Found {len(media_items)} total items, {int(needed_requests)} need TMDB API calls")
 
     processed_count = 0
     for item in media_items:
