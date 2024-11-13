@@ -174,7 +174,5 @@ class FolderMatcher:
                         series_folder.rmdir()
                         logger.debug(f"Removed empty series folder: {series_folder}")
 
-        # Refresh the directory lookup after processing
-        self.updater.scan_directories()
         logger.info("Finished reprocessing unmatched files")
 

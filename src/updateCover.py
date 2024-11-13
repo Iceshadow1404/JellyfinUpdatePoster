@@ -127,7 +127,6 @@ class UpdateCover:
 
     async def initialize(self):
         """Initialize by scanning directories and loading items."""
-        logger.info("Starting initialization...")
         self.missing_folders = []
         self.scan_directories()
         self.processing_start_time = time.time()
@@ -156,7 +155,7 @@ class UpdateCover:
     @lru_cache(maxsize=100)  # Cache directory scan results
     def scan_directories(self):
         """Optimized directory scanning using ThreadPoolExecutor for I/O operations"""
-        logger.info("Scanning directories with optimized method...")
+        logger.info("Scanning directories...")
         self.directory_lookup.clear()
 
         def scan_dir(base_dir: Path):
@@ -181,7 +180,6 @@ class UpdateCover:
 
     async def load_items(self):
         """Asynchronously load items from file"""
-        logger.info(f"Loading items from {OUTPUT_FILENAME}")
         try:
             def read_file() -> List[Dict]:
                 with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
@@ -472,7 +470,6 @@ class UpdateCover:
 
     async def process_items(self):
         """Process items in parallel batches"""
-        logger.info(f"Starting to process {len(self.items_to_process)} items...")
 
         # Process items in batches
         for i in range(0, len(self.items_to_process), self.batch_size):

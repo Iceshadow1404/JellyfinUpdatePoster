@@ -178,7 +178,6 @@ def get_jellyfin_content(silent=False):
 
         with open(OUTPUT_FILENAME, 'w', encoding='utf-8') as f:
             json.dump(processed_items, f, ensure_ascii=False, indent=4)
-        logger.info(f'Saved new {OUTPUT_FILENAME}')
         return processed_items
     else:
         if not silent:

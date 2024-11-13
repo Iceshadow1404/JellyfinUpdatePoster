@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import argparse
+import time
 import traceback
 import gc
 
@@ -75,9 +76,7 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     force = False
 
                 # Use context manager for UpdateCover
-                updater.scan_directories()
                 async with updater:
-                    await updater.initialize()
                     logging.info('Run the UpdateCover process')
                     await updater.run()
 

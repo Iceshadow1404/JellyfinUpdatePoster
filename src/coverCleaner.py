@@ -539,12 +539,12 @@ def cover_cleaner():
                     destination_path = os.path.join(CONSUMED_DIR, os.path.basename(original_file_path))
 
                     shutil.copy(original_file_path, destination_path)
-                    logger.info(f"File copied to {destination_path}")
+                    logger.info(f"File moved to {destination_path}")
 
                     if process_image_file(file_path, language_data):
                         # Check if the file was moved during processing
                         if not os.path.exists(file_path):
-                            logger.info(f"File was moved during processing: {filename}")
+                            pass
                         else:
                             move_to_consumed(file_path)
                     else:
@@ -555,10 +555,6 @@ def cover_cleaner():
                 if os.path.exists(original_file_path):
                     move_to_consumed(original_file_path)
 
-        logger.info("Directory lookup refreshed after processing files")
-        folder_matcher.reprocess_unmatched_files()
-        # Refresh the directory lookup after processing all files
-        updater.scan_directories()
     else:
         logger.info('No files found in the folder.')
 
