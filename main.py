@@ -49,10 +49,6 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
 
-                # Force sync before major operations
-                os.system('sync')
-                await asyncio.sleep(2)
-
                 get_jellyfin_content()
                 collect_titles()
                 update_output_file()
@@ -72,6 +68,10 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
 
                 # Clean up empty folders in NO_MATCH_FOLDER
                 cleanup_empty_folders()
+
+                # Force sync before major operations
+                os.system('sync')
+                await asyncio.sleep(2)
 
                 if force:
                     logging.info("Force flag was set, resetting it to False after first iteration.")
