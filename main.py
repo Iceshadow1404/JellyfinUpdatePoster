@@ -24,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main_loop(force: bool, webhook_server: WebhookServer):
-    # Initialize UpdateCover with custom cache size
-    updater = UpdateCover()  # Adjust cache size as needed
+    updater = UpdateCover()
 
     while True:
         try:
@@ -44,12 +43,16 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
             content_changed = check_jellyfin_content()
             webhook_triggered = webhook_server.get_trigger_status() if ENABLE_WEBHOOK else False
 
-            # Check if there are any files or new jellyfin content
             if files or content_changed or force or mediux or webhook_triggered:
                 if webhook_triggered:
                     logging.info('Process triggered by webhook!')
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
+
+                # Force sync before major operations
+                os.system('sync')
+                await asyncio.sleep(2)
+                logging.info("SYNC SYNC SYNC")
 
                 get_jellyfin_content()
                 collect_titles()
@@ -61,36 +64,29 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     cover_cleaner()
                     mediux = False
 
-                # Load language data
                 language_data = load_language_data()
-
-                # Create FolderMatcher instance and reprocess unmatched files
                 folder_matcher = FolderMatcher(language_data)
                 folder_matcher.reprocess_unmatched_files()
-
-                # Clean up empty folders in NO_MATCH_FOLDER
                 cleanup_empty_folders()
 
                 if force:
                     logging.info("Force flag was set, resetting it to False after first iteration.")
                     force = False
 
-                # Use context manager for UpdateCover
                 async with updater:
                     logging.info('Run the UpdateCover process')
                     await updater.run()
 
-                # Explicit cleanup after processing
                 gc.collect()
             else:
                 logging.info('Found no files or new content on Jellyfin')
 
-            await asyncio.sleep(30)  # Wait for 30 seconds before the next iteration
+            await asyncio.sleep(30)
 
         except Exception as e:
             logging.error(f"An error occurred in the main loop: {str(e)}")
             logging.error(traceback.format_exc())
-            await asyncio.sleep(60)  # Wait for 1 minute before retrying if an error occurs
+            await asyncio.sleep(60)
 
 
 async def run_application(force: bool):
