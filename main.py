@@ -24,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main_loop(force: bool, webhook_server: WebhookServer):
-    # Initialize UpdateCover with custom cache size
-    updater = UpdateCover()  # Adjust cache size as needed
+    updater = UpdateCover()
 
     while True:
         try:
@@ -44,12 +43,15 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
             content_changed = check_jellyfin_content()
             webhook_triggered = webhook_server.get_trigger_status() if ENABLE_WEBHOOK else False
 
-            # Check if there are any files or new jellyfin content
             if files or content_changed or force or mediux or webhook_triggered:
                 if webhook_triggered:
                     logging.info('Process triggered by webhook!')
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
+
+                # Force sync before major operations
+                os.system('sync')
+                await asyncio.sleep(2)
 
                 get_jellyfin_content()
                 collect_titles()
