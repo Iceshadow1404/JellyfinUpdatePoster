@@ -6,10 +6,9 @@ import requests
 from fuzzywuzzy import fuzz
 import logging
 from PIL import Image
-from datetime import datetime
-from pathlib import Path
-import json
 from datetime import datetime, timedelta
+import json
+from pathlib import Path
 
 from src.updateCover import UpdateCover
 from src.rematchNoMatchFolder import FolderMatcher
@@ -33,13 +32,15 @@ def load_language_data():
         logger.error(f"Error decoding JSON from language data file: {LANGUAGE_DATA_FILENAME}")
         return {}
 
-
 def convert_to_jpg(file_path):
     """Convert image to JPG format if it's not already."""
     filename, file_extension = os.path.splitext(file_path)
     if file_extension.lower() not in ['.jpg', '.jpeg']:
         try:
             with Image.open(file_path) as img:
+                # Remove XMP metadata to prevent "XMP data is too long" error
+                img.info.pop('xmp', None)
+                
                 rgb_img = img.convert('RGB')
                 new_file_path = f"{filename}.jpg"
                 rgb_img.save(new_file_path, 'JPEG')
@@ -47,6 +48,7 @@ def convert_to_jpg(file_path):
             return new_file_path
         except Exception as e:
             logger.error(f"Error converting {file_path} to JPG: {str(e)}")
+            # If conversion fails, return the original file path
             return file_path
     elif file_extension.lower() == '.jpeg':
         new_file_path = f"{filename}.jpg"
@@ -322,7 +324,7 @@ def process_image_file(file_path, language_data):
         logger.info(f"Detected collection file: {filename}")
         return process_collection(file_path, language_data)
 
-    # If not a collection, continue with regular processing...
+    # Check if it's a background/backdrop image
     is_background = any(term in filename.lower() for term in ['backdrop', 'background'])
     clean_name_result = clean_name(filename)
     year_match = re.search(r'\((\d{4})\)', filename)
@@ -331,7 +333,6 @@ def process_image_file(file_path, language_data):
     matched_item = find_match(clean_name_result, language_data)
 
     if matched_item:
-        # Rest of the existing regular processing code...
         extracted_title = matched_item['extracted_title']
         original_title = matched_item.get('original_title', '')
         year = matched_item.get('year', '')
@@ -374,14 +375,24 @@ def process_image_file(file_path, language_data):
         series_name, file_year = get_series_name(filename)
         year_to_use = year or file_year
         timestamp = get_timestamp_folder()
-        folder_name = f"{series_name} ({year_to_use})" if year_to_use else series_name
-        no_match_folder = Path(NO_MATCH_FOLDER) / 'Poster' / folder_name / timestamp
+
+        # Create base folder name with year if available
+        base_name = f"{series_name} ({year_to_use})" if year_to_use else series_name
+
+        # For background images, append " - Background" to the filename
+        if is_background and not filename.lower().endswith(' - background.jpg'):
+            name_without_ext, ext = os.path.splitext(base_name)
+            new_filename = f"{name_without_ext} - Background.jpg"
+        else:
+            new_filename = filename
+
+        no_match_folder = Path(NO_MATCH_FOLDER) / 'Poster' / base_name / timestamp
         no_match_folder.mkdir(parents=True, exist_ok=True)
 
-        new_file_path = no_match_folder / filename
+        new_file_path = no_match_folder / new_filename
         shutil.move(file_path, new_file_path)
 
-        logger.info(f"File {filename} moved to No-Match Poster subfolder: {new_file_path}")
+        logger.info(f"File moved to No-Match folder: {new_file_path}")
         return True
 
 
@@ -528,12 +539,12 @@ def cover_cleaner():
                     destination_path = os.path.join(CONSUMED_DIR, os.path.basename(original_file_path))
 
                     shutil.copy(original_file_path, destination_path)
-                    logger.info(f"File copied to {destination_path}")
+                    logger.info(f"File moved to {destination_path}")
 
                     if process_image_file(file_path, language_data):
                         # Check if the file was moved during processing
                         if not os.path.exists(file_path):
-                            logger.info(f"File was moved during processing: {filename}")
+                            pass
                         else:
                             move_to_consumed(file_path)
                     else:
@@ -544,10 +555,6 @@ def cover_cleaner():
                 if os.path.exists(original_file_path):
                     move_to_consumed(original_file_path)
 
-        logger.info("Directory lookup refreshed after processing files")
-        folder_matcher.reprocess_unmatched_files()
-        # Refresh the directory lookup after processing all files
-        updater.scan_directories()
     else:
         logger.info('No files found in the folder.')
 

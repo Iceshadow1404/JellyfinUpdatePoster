@@ -6,3 +6,4 @@ requests
 python-Levenshtein
 fastapi
 uvicorn
+psutil

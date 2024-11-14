@@ -36,7 +36,6 @@ def save_content_ids(ids):
     with open(CONTENT_IDS_FILE, 'w') as f:
         json.dump(ids, f)
 
-
 def check_jellyfin_content():
     try:
         old_ids = load_content_ids()
@@ -52,7 +51,6 @@ def check_jellyfin_content():
                 logging.info(f'Old IDs: {len(old_ids)}')
                 logging.info(f'New IDs: {len(new_ids)}')
 
-                # Save new content right away when detected
                 processed_items = get_jellyfin_content()
 
                 if processed_items:

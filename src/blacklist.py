@@ -78,7 +78,8 @@ def update_output_file():
     with open(OUTPUT_FILENAME, 'w', encoding='utf-8') as f:
         json.dump(filtered_items, f, indent=4, ensure_ascii=False)
 
-    logger.info(f"Updated {OUTPUT_FILENAME}. Removed {len(items) - len(filtered_items)} blacklisted items.")
+    if len(items) - len(filtered_items) != 0:
+        logger.info(f"Updated {OUTPUT_FILENAME}. Removed {len(items) - len(filtered_items)} blacklisted items.")
 
 # Example usage
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import argparse
+import time
 import traceback
 import gc
 
@@ -30,13 +31,10 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
         try:
             RAW_COVER_DIR.mkdir(parents=True, exist_ok=True)
 
-            # Initialize mediux as False
             mediux = False
-
             if os.path.exists(MEDIUX_FILE):
                 with open(MEDIUX_FILE, 'r') as file:
                     content = file.read().rstrip()
-                    # Set mediux to True if content is not empty
                     mediux = bool(content)
             else:
                 with open(MEDIUX_FILE, 'w'):
@@ -53,10 +51,10 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
 
-                if force:
-                    get_jellyfin_content()
-                    collect_titles()
-                    update_output_file()
+                get_jellyfin_content()
+                collect_titles()
+                update_output_file()
+
                 if files or mediux:
                     if mediux:
                         await mediux_downloader()
@@ -78,9 +76,7 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     force = False
 
                 # Use context manager for UpdateCover
-                updater.scan_directories()
                 async with updater:
-                    await updater.initialize()
                     logging.info('Run the UpdateCover process')
                     await updater.run()
 
@@ -90,9 +86,10 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 logging.info('Found no files or new content on Jellyfin')
 
             await asyncio.sleep(30)  # Wait for 30 seconds before the next iteration
+
         except Exception as e:
-            logger.error(f"An error occurred in the main loop: {str(e)}")
-            logger.error(traceback.format_exc())
+            logging.error(f"An error occurred in the main loop: {str(e)}")
+            logging.error(traceback.format_exc())
             await asyncio.sleep(60)  # Wait for 1 minute before retrying if an error occurs
 
 

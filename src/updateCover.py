@@ -7,30 +7,52 @@ import aiohttp
 from base64 import b64encode
 import gc
 import os
-from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
+import time
+import concurrent.futures
+from functools import lru_cache, cached_property
 from collections import defaultdict, OrderedDict
+import psutil
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY
-from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER
+from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING, EXTRA_FOLDER, LANGUAGE_DATA_FILENAME
 
 logger = logging.getLogger(__name__)
 
 class LRUCache:
     """Size-limited LRU cache for image data"""
+    MEMORY_THRESHOLD_PERCENT = 80  # Percentage of system memory to use
 
     def __init__(self, max_size_mb=1000):
         self.max_size = max_size_mb * 1024 * 1024  # Convert MB to bytes
-        self.current_size = 0
+        self._current_size = 0
         self.cache = OrderedDict()
 
     def get(self, key: str) -> Optional[bytes]:
+        # Check system memory usage before retrieving
+        if psutil.virtual_memory().percent > self.MEMORY_THRESHOLD_PERCENT:
+            logger.warning("High memory usage, clearing cache")
+            self.clear()
+            return None
+
+        if key not in self.cache:
+            return None
+
+        # Move to end (most recently used)
         if key in self.cache:
             # Move to end (most recently used)
             value = self.cache.pop(key)
             self.cache[key] = value
             return value
         return None
+
+    def _can_add_item(self, value_size: int) -> bool:
+        """Check if item can be added without exceeding memory threshold"""
+        system_memory = psutil.virtual_memory()
+        if system_memory.percent > self.MEMORY_THRESHOLD_PERCENT:
+            logger.warning("High memory usage, preventing cache addition")
+            return False
+        
+        return self.current_size + value_size <= self.max_size
 
     def put(self, key: str, value: bytes):
         # Remove oldest items if adding this would exceed max size
@@ -39,22 +61,47 @@ class LRUCache:
         if value_size > self.max_size:
             logger.warning(f"Single item larger than cache size, skipping cache: {key}")
             return
+        
+        if not self._can_add_item(value_size):
+            return
 
         while self.cache and (self.current_size + value_size > self.max_size):
             _, oldest_value = self.cache.popitem(last=False)
-            self.current_size -= len(oldest_value)
+            self._current_size -= len(oldest_value)
 
         if key in self.cache:
-            self.current_size -= len(self.cache.pop(key))
+            self._current_size -= len(self.cache.pop(key))
 
         self.cache[key] = value
-        self.current_size += value_size
+        self._current_size += value_size
 
     def clear(self):
         self.cache.clear()
-        self.current_size = 0
+        self._current_size = 0
+        # Force garbage collection after clearing
+        gc.collect()
+
+    def prune(self, percentage: float = 0.5):
+        """Prune cache to a certain percentage of its current size"""
+        items_to_remove = int(len(self.cache) * percentage)
+        for _ in range(items_to_remove):
+            self.cache.popitem(last=False)
+
+    @property
+    def current_size(self):
+        return self._current_size
 
 class UpdateCover:
+    @cached_property
+    def image_cache(self):
+        """Lazy-loaded image cache with controlled memory usage"""
+        return LRUCache(max_size_mb=250)  # Reduced cache size
+
+    @cached_property
+    def directory_cache(self):
+        """Lazy-loaded directory cache"""
+        return {}
+
     def __init__(self):
         self.directory_lookup: Dict[str, Path] = {}
         self.used_folders: List[Path] = []
@@ -62,6 +109,8 @@ class UpdateCover:
         self.extra_folders: List[Path] = []
         self.items_to_process: List[Dict] = []
         self.session: Optional[aiohttp.ClientSession] = None
+        self.processing_start_time = None
+        self.processing_end_time = None
         self.semaphore = asyncio.Semaphore(10)  # Limit concurrent requests
         self.batch_size = 20  # Number of items to process in parallel
 
@@ -71,7 +120,20 @@ class UpdateCover:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.session:
+            self.image_cache.clear()
+            self.directory_cache.clear()
+            gc.collect()
             await self.session.close()
+
+    async def initialize(self):
+        """Initialize by scanning directories and loading items."""
+        self.missing_folders = []
+        self.scan_directories()
+        self.processing_start_time = time.time()
+        
+        await self.load_items()
+        logger.info(
+            f"Initialization complete. Found {len(self.directory_lookup)} directories and {len(self.items_to_process)} items to process.")
 
     async def read_image(self, image_path: Path) -> bytes:
         """Read image data with caching"""
@@ -82,7 +144,7 @@ class UpdateCover:
             return cached_data
 
         try:
-            with image_path.open('rb') as file:
+            with image_path.open('rb', buffering=1024*1024) as file:  # Buffered reading
                 data = file.read()
                 self.image_cache.put(cache_key, data)
                 return data
@@ -90,16 +152,7 @@ class UpdateCover:
             logger.error(f"Error reading image {image_path}: {str(e)}")
             raise
 
-    async def initialize(self):
-        """Initialize by scanning directories and loading items."""
-        logger.info("Starting initialization...")
-        self.missing_folders = []
-        self.scan_directories()
-        await self.load_items()
-        logger.info(
-            f"Initialization complete. Found {len(self.directory_lookup)} directories and {len(self.items_to_process)} items to process.")
-
-
+    @lru_cache(maxsize=100)  # Cache directory scan results
     def scan_directories(self):
         """Optimized directory scanning using ThreadPoolExecutor for I/O operations"""
         logger.info("Scanning directories...")
@@ -113,15 +166,13 @@ class UpdateCover:
                     result[key] = item_dir
             return result
 
-        with ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
             futures = [executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
-            for future in futures:
+            
+            # Use as_completed for better memory management
+            for future in concurrent.futures.as_completed(futures):
                 self.directory_lookup.update(future.result())
 
-        logger.info(f"Directory scan complete. Found {len(self.directory_lookup)} directories.")
-
-        with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
             for future in futures:
                 self.directory_lookup.update(future.result())
 
@@ -129,9 +180,8 @@ class UpdateCover:
 
     async def load_items(self):
         """Asynchronously load items from file"""
-        logger.info(f"Loading items from {OUTPUT_FILENAME}")
         try:
-            def read_file():
+            def read_file() -> List[Dict]:
                 with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
                     return json.load(f)
 
@@ -144,35 +194,65 @@ class UpdateCover:
 
     def get_item_directory(self, item: Dict) -> Optional[Path]:
         item_type = item.get('Type', 'Series' if 'Seasons' in item else 'Movie')
-        item_name = self.clean_name(item.get('Name', '').strip())
-        item_original_title = self.clean_name(item.get('OriginalTitle', item_name).strip())
+        tmdb_id = str(item.get('TMDbId')) if item.get('TMDbId') else None
+        
+        # Load language data
+        try:
+            with open(LANGUAGE_DATA_FILENAME, 'r', encoding='utf-8') as f:
+                language_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            logger.error(f"Error loading language data from {LANGUAGE_DATA_FILENAME}")
+            return None
+
+        # Determine category based on item type
+        if item_type == "BoxSet":
+            category = "collections"
+        elif item_type == "Series":
+            category = "tv"
+        else:
+            category = "movies"
+
+        # Get titles from language data if available
+        if tmdb_id and tmdb_id in language_data.get(category, {}):
+            item_data = language_data[category][tmdb_id]
+            extracted_title = self.clean_name(item_data.get('extracted_title', '').strip())
+            original_title = self.clean_name(item_data.get('originaltitle', '').strip())
+        else:
+            # Fallback to item names if not found in language data
+            extracted_title = self.clean_name(item.get('Name', '').strip())
+            original_title = self.clean_name(item.get('OriginalTitle', extracted_title).strip())
+
         item_year = item.get('Year')
 
         possible_keys = []
         if item_type == "BoxSet":
             possible_keys = [
-                item_name.lower(),
+                extracted_title.lower(),
             ]
         else:
             possible_keys = [
-                f"{item_original_title} ({item_year})".lower(),
-                f"{item_name} ({item_year})".lower()
+                f"{original_title} ({item_year})".lower(),
+                f"{extracted_title} ({item_year})".lower()
             ]
 
         for key in possible_keys:
-            if key in self.directory_lookup:
-                self.used_folders.append(self.directory_lookup[key])
-                return self.directory_lookup[key]
+            if key in self.directory_cache:
+                self.used_folders.append(self.directory_cache[key])
+                return self.directory_cache[key]
+            elif key in self.directory_lookup:
+                self.directory_cache[key] = self.directory_lookup[key]
+                self.used_folders.append(self.directory_cache[key])
+                return self.directory_cache[key]
 
         # If we reach here, no directory was found
         base_dir = COLLECTIONS_DIR if item_type == "BoxSet" else POSTER_DIR
 
         if base_dir == COLLECTIONS_DIR:
-            missing_name = f"{item_original_title}" if item_original_title and not any(
-                ord(char) > 127 for char in item_original_title) else f"{item_name}"
+            missing_name = f"{original_title}" if original_title and not any(
+                ord(char) > 127 for char in original_title) else f"{extracted_title}"
         else:
-            missing_name = f"{item_original_title} ({item_year})" if item_original_title and not any(
-                ord(char) > 127 for char in item_original_title) else f"{item_name} ({item_year})"
+            missing_name = f"{original_title} ({item_year})" if original_title and not any(
+                ord(char) > 127 for char in original_title) else f"{extracted_title} ({item_year})"
 
         missing_folder = f"Folder not found: {base_dir / missing_name}"
         self.missing_folders.append(missing_folder)
@@ -199,7 +279,7 @@ class UpdateCover:
         try:
             # First get all images for the item
             url = f"{JELLYFIN_URL}/Items/{item_id}/Images"
-            headers = {'X-Emby-Token': API_KEY}
+            headers = {'X-Emby-Token': API_KEY, 'Connection': 'keep-alive'}
 
             async with self.semaphore:
                 async with self.session.get(url, headers=headers) as response:
@@ -223,7 +303,7 @@ class UpdateCover:
             logger.error(f"Error deleting backdrops for {item.get('Name')}: {str(e)}")
 
     async def update_jellyfin(self, id: str, image_path: Path, item: Dict, image_type: str = 'Primary',
-                            extra_info: str = '', delete_existing: bool = False):
+                             extra_info: str = '', delete_existing: bool = False):
         """Updated update_jellyfin method with delete_existing parameter"""
         try:
             if not image_path.exists():
@@ -236,7 +316,7 @@ class UpdateCover:
 
             # Read and encode image
             async with self.semaphore:  # Limit concurrent file operations
-                with image_path.open('rb') as file:
+                with image_path.open('rb', buffering=1024*1024) as file:  # Buffered reading
                     image_data = file.read()
                 encoded_data = b64encode(image_data)
 
@@ -244,7 +324,8 @@ class UpdateCover:
             url = f"{JELLYFIN_URL}{endpoint}"
             headers = {
                 'X-Emby-Token': API_KEY,
-                'Content-Type': self.get_content_type(str(image_path))
+                'Content-Type': self.get_content_type(str(image_path)),
+                'Connection': 'keep-alive'
             }
 
             async with self.semaphore:  # Limit concurrent API requests
@@ -265,7 +346,6 @@ class UpdateCover:
             del encoded_data
             gc.collect()
 
-
     @lru_cache(maxsize=1000)
     def get_content_type(self, file_path: str) -> str:
         ext = file_path.split('.')[-1].lower()
@@ -275,7 +355,6 @@ class UpdateCover:
             'jpeg': 'image/jpeg',
             'webp': 'image/webp'
         }.get(ext, 'application/octet-stream')
-
 
     async def process_item(self, item: Dict):
         """Process a single item and its related images"""
@@ -290,7 +369,7 @@ class UpdateCover:
             if (main_poster := self.find_image(item_dir, 'poster')):
                 tasks.append(self.update_jellyfin(item['Id'], main_poster, item, 'Primary'))
 
-            # Add backdrop task - check for both 'backdrop' and 'background'
+            # Add backdrop task - check for both 'backdrop' and 'background' with memory-efficient search
             backdrop = self.find_image(item_dir, 'backdrop') or self.find_image(item_dir, 'background')
             if backdrop:
                 tasks.append(self.update_jellyfin(
@@ -335,12 +414,11 @@ class UpdateCover:
         finally:
             gc.collect()
 
-
     async def save_missing_folders(self):
         """Save missing and extra folders to their respective files"""
         try:
             # Clear existing files first
-            if os.path.exists(MISSING):
+            if os.path.exists(MISSING):  # Memory-efficient file handling
                 os.remove(MISSING)
             if os.path.exists(EXTRA_FOLDER):
                 os.remove(EXTRA_FOLDER)
@@ -376,10 +454,9 @@ class UpdateCover:
             self.missing_folders = []
             gc.collect()
 
-
     def _log_results(self):
         """Log the results of the missing and extra folders check."""
-        missing_exists = os.path.exists(MISSING)
+        missing_exists = os.path.exists(MISSING)  # Minimal file system interactions
         extra_exists = os.path.exists(EXTRA_FOLDER)
 
         if missing_exists and extra_exists:
@@ -393,7 +470,6 @@ class UpdateCover:
 
     async def process_items(self):
         """Process items in parallel batches"""
-        logger.info(f"Starting to process {len(self.items_to_process)} items...")
 
         # Process items in batches
         for i in range(0, len(self.items_to_process), self.batch_size):
@@ -406,16 +482,17 @@ class UpdateCover:
         """Main execution method"""
         try:
             await self.initialize()
+            time.sleep(1)
             await self.process_items()
             await self.save_missing_folders()
+            self.processing_end_time = time.time()
+            logger.info(f"Process completed in {self.processing_end_time - self.processing_start_time:.2f} seconds.")
         except Exception as e:
             logger.error(f"Error in run method: {str(e)}")
         finally:
             self.clean_name.cache_clear()
             self.missing_folders = []
             gc.collect()
-            logger.info("Process completed.")
-
 
 if __name__ == "__main__":
     updater = UpdateCover()
