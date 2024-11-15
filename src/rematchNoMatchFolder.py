@@ -22,10 +22,9 @@ class FolderMatcher:
         self.updater = UpdateCover()
 
     def _build_title_cache(self) -> Dict[str, Tuple[str, dict]]:
-
         cache = {}
 
-        for category in ['movies', 'tv']:
+        for category in ['movies', 'tv', 'collections']:
             category_data = self.language_data.get(category, {})
             if not category_data:
                 continue
@@ -120,7 +119,6 @@ class FolderMatcher:
             logger.error(f"Error processing subfolder {dated_subfolder}: {str(e)}")
 
     def _process_zip_file(self, zip_path: str) -> None:
-
         try:
             from src.coverCleaner import process_zip_file
             process_zip_file(zip_path, self.language_data)
@@ -175,4 +173,3 @@ class FolderMatcher:
                         logger.debug(f"Removed empty series folder: {series_folder}")
 
         logger.info("Finished reprocessing unmatched files")
-
