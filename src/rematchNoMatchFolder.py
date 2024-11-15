@@ -143,36 +143,80 @@ class FolderMatcher:
         """
         logger.info("Starting reprocessing of unmatched files")
 
-        # Process each subfolder type
-        for subfolder in ['Collections', 'Poster']:
-            no_match_path = Path(NO_MATCH_FOLDER) / subfolder
-            if not no_match_path.exists():
-                continue
+        # Process the Collections folder
+        self._process_unmatched_files(Path(NO_MATCH_FOLDER) / 'Collections')
 
-            # Get all series folders
-            series_folders = [f for f in no_match_path.iterdir() if f.is_dir()]
-
-            # Process series folders in parallel
-            with ThreadPoolExecutor() as executor:
-                for series_folder in series_folders:
-                    has_match, matched_item = self.find_matching_folder(series_folder.name)
-
-                    if not has_match:
-                        continue
-
-                    # Get all dated subfolders
-                    dated_subfolders = [f for f in series_folder.iterdir() if f.is_dir()]
-                    if not dated_subfolders:
-                        continue
-
-                    # Process dated subfolders in parallel
-                    params = [(subfolder, series_folder.name) for subfolder in dated_subfolders]
-                    executor.map(self.process_dated_subfolder, params)
-
-                    # Remove empty series folder
-                    if not any(series_folder.iterdir()):
-                        series_folder.rmdir()
-                        logger.debug(f"Removed empty series folder: {series_folder}")
+        # Process the Poster folder
+        self._process_unmatched_files(Path(NO_MATCH_FOLDER) / 'Poster')
 
         logger.info("Finished reprocessing unmatched files")
+
+    def _process_unmatched_files(self, folder_path: Path) -> None:
+        """
+        Process unmatched files in the given folder.
+        """
+        if not folder_path.exists():
+            logger.debug(f"Folder {folder_path} does not exist, skipping")
+            return
+
+        # Process files directly in the folder
+        self._process_folder_files(folder_path)
+
+        # Process series folders and their dated subfolders
+        series_folders = [f for f in folder_path.iterdir() if f.is_dir()]
+        logger.debug(f"Found {len(series_folders)} series folders in {folder_path}")
+        with ThreadPoolExecutor() as executor:
+            for series_folder in series_folders:
+                logger.debug(f"Processing series folder: {series_folder.name}")
+                has_match, matched_item = self.find_matching_folder(series_folder.name)
+                if not has_match:
+                    logger.debug(f"No match found for series folder: {series_folder.name}")
+                    continue
+
+                # Process dated subfolders in parallel
+                dated_subfolders = [f for f in series_folder.iterdir() if f.is_dir()]
+                if dated_subfolders:
+                    logger.debug(f"Found {len(dated_subfolders)} dated subfolders in {series_folder.name}")
+                    params = [(subfolder, series_folder.name) for subfolder in dated_subfolders]
+                    executor.map(self.process_dated_subfolder, params)
+                else:
+                    logger.debug(f"No dated subfolders found in {series_folder.name}")
+                    self._process_folder_files(series_folder)
+
+                # Remove empty series folder
+                if not any(series_folder.iterdir()):
+                    series_folder.rmdir()
+                    logger.debug(f"Removed empty series folder: {series_folder}")
+
+    def _process_folder_files(self, folder_path: Path) -> None:
+        """
+        Process files directly in the given folder.
+        """
+        files_to_process = [f for f in folder_path.iterdir() if f.is_file()]
+        if not files_to_process:
+            logger.debug(f"No files to process in {folder_path}")
+            return
+
+        # Create zip file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"{folder_path.name}_{timestamp}.zip"
+        zip_path = Path(RAW_COVER_DIR) / zip_filename
+
+        try:
+            # Create zip file with all images
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file in files_to_process:
+                    zipf.write(file, file.name)
+                    logger.debug(f"Added {file.name} to {zip_filename}")
+
+            # Process the zip file
+            self._process_zip_file(str(zip_path))
+
+            # Clean up processed files
+            for file in files_to_process:
+                file.unlink()
+                logger.debug(f"Removed processed file: {file}")
+
+        except Exception as e:
+            logger.error(f"Error processing files in {folder_path}: {str(e)}")
 
