@@ -163,7 +163,8 @@ def process_unmatched_file(file_path, clean_name, year=None, is_collection=False
 
     # Choose the appropriate subfolder based on whether it's a collection
     subfolder = 'Collections' if is_collection else 'Poster'
-    no_match_folder = os.path.join(NO_MATCH_FOLDER, subfolder, folder_name)
+    timestamp = get_timestamp_folder()
+    no_match_folder = os.path.join(NO_MATCH_FOLDER, subfolder, folder_name, timestamp)
     os.makedirs(no_match_folder, exist_ok=True)
 
     new_file_path = os.path.join(no_match_folder, os.path.basename(file_path))
@@ -467,7 +468,7 @@ def archive_existing_content(target_dir: Path):
     dir_name = target_dir.name
 
     # Determine if it's a collection or a regular poster
-    is_collection = 'collection' in dir_name.lower() or 'filmreihe' in dir_name.lower()
+    is_collection = is_collection(dir_name)
     replaced_subdir = 'Collections' if is_collection else 'Poster'
 
     # Create a subfolder for this specific item
@@ -515,12 +516,9 @@ def rename_file_for_archive(filename: str, dir_name: str) -> str:
         return f"{dir_name} - Backdrop.jpg"
     return filename
 
-def cover_cleaner():
+def cover_cleaner(language_data):
     global LAST_TIMESTAMP
     LAST_TIMESTAMP = None
-
-    # Load language data
-    language_data = load_language_data()
 
     folder_matcher = FolderMatcher(language_data)
 
@@ -555,9 +553,20 @@ def cover_cleaner():
                 if os.path.exists(original_file_path):
                     move_to_consumed(original_file_path)
 
+            # Clean up empty folders in NO_MATCH_FOLDER
+            cleanup_empty_folders()
+
     else:
         logger.info('No files found in the folder.')
 
+def cleanup_empty_folders():
+    """Remove empty folders in the NO_MATCH_FOLDER directory."""
+    for root, dirs, files in os.walk(NO_MATCH_FOLDER, topdown=False):
+        for dir in dirs:
+            dir_path = os.path.join(root, dir)
+            if not os.listdir(dir_path):
+                os.rmdir(dir_path)
+                logger.info(f"Removed empty folder: {dir_path}")
 
 if __name__ == "__main__":
-    cover_cleaner()
+    cover_cleaner(load_language_data())
