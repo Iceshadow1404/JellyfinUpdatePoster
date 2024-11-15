@@ -7,3 +7,4 @@ python-Levenshtein
 fastapi
 uvicorn
 psutil
+watchdog
