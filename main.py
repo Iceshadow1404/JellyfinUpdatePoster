@@ -13,92 +13,90 @@ from src.logging import setup_logging
 from src.updateCover import UpdateCover
 from src.languageLookup import collect_titles
 from src.blacklist import update_output_file
-from src.constants import RAW_COVER_DIR, MEDIUX_FILE, COVER_DIR
+from src.constants import RAW_COVER_DIR, MEDIUX_FILE
 from src.mediux_downloader import mediux_downloader
 from src.webhook import WebhookServer
 from src.config import ENABLE_WEBHOOK
 from src.rematchNoMatchFolder import FolderMatcher
 from src.cleanupEmptyFolder import cleanup_empty_folders
-from src.file_watcher import CoverMonitor
 
 logger = logging.getLogger(__name__)
 
 
 async def main_loop(force: bool, webhook_server: WebhookServer):
     updater = UpdateCover()
-    cover_monitor = CoverMonitor(COVER_DIR)
-    cover_monitor.start()
 
-    try:
-        while True:
-            try:
-                RAW_COVER_DIR.mkdir(parents=True, exist_ok=True)
+    # Clear caches before processing
+    gc.collect()
 
-                mediux = False
-                if os.path.exists(MEDIUX_FILE):
-                    with open(MEDIUX_FILE, 'r') as file:
-                        content = file.read().rstrip()
-                        mediux = bool(content)
+    while True:
+        try:
+            RAW_COVER_DIR.mkdir(parents=True, exist_ok=True)
+
+            mediux = False
+            if os.path.exists(MEDIUX_FILE):
+                with open(MEDIUX_FILE, 'r') as file:
+                    content = file.read().rstrip()
+                    mediux = bool(content)
+            else:
+                with open(MEDIUX_FILE, 'w'):
+                    pass
+
+            files = os.listdir(RAW_COVER_DIR)
+            content_changed = check_jellyfin_content()
+            webhook_triggered = webhook_server.get_trigger_status() if ENABLE_WEBHOOK else False
+
+            if files or content_changed or force or mediux or webhook_triggered:
+                if webhook_triggered:
+                    logging.info('Process triggered by webhook!')
                 else:
-                    with open(MEDIUX_FILE, 'w'):
-                        pass
+                    logging.info('Found files, new Jellyfin content, or --force flag set!')
 
-                content_changed = check_jellyfin_content()
-                webhook_triggered = webhook_server.get_trigger_status() if ENABLE_WEBHOOK else False
-                file_changes = cover_monitor.has_changes()
+                get_jellyfin_content()
+                collect_titles()
+                update_output_file()
 
-                if file_changes or content_changed or force or mediux or webhook_triggered:
-                    if webhook_triggered:
-                        logging.info('Process triggered by webhook!')
-                    elif file_changes:
-                        logging.info('New files detected in monitoring directory!')
-                    else:
-                        logging.info('Found new Jellyfin content or --force flag set!')
+                if files or mediux:
+                    if mediux:
+                        await mediux_downloader()
+                    cover_cleaner()
+                    mediux = False
 
-                    get_jellyfin_content()
-                    collect_titles()
-                    update_output_file()
+                # Load language data
+                language_data = load_language_data()
 
-                    if file_changes or mediux:
-                        if mediux:
-                            await mediux_downloader()
-                        cover_cleaner()
-                        mediux = False
+                # Create FolderMatcher instance and reprocess unmatched files
+                folder_matcher = FolderMatcher(language_data)
+                folder_matcher.reprocess_unmatched_files()
 
-                    language_data = load_language_data()
-                    folder_matcher = FolderMatcher(language_data)
-                    folder_matcher.reprocess_unmatched_files()
-                    cleanup_empty_folders()
+                # Clean up empty folders in NO_MATCH_FOLDER
+                cleanup_empty_folders()
 
-                    os.system('sync')
-                    await asyncio.sleep(2)
+                # Force sync before major operations
+                os.system('sync')
+                await asyncio.sleep(2)
+                gc.collect()  # Force garbage collection before UpdateCover
 
-                    updater.scan_directories()
+                if force:
+                    logging.info("Force flag was set, resetting it to False after first iteration.")
+                    force = False
 
-                    if force:
-                        logging.info("Force flag was set, resetting it to False after first iteration.")
-                        force = False
+                # Use context manager for UpdateCover
+                async with updater:
+                    logging.info('Run the UpdateCover process')
+                    await updater.run()
 
-                    async with updater:
-                        logging.info('Run the UpdateCover process')
-                        await updater.run()
+                # Explicit cleanup after processing
+                gc.collect()
+            else:
+                logging.info('Found no files or new content on Jellyfin')
 
-                    gc.collect()
+            await asyncio.sleep(30)  # Wait for 30 seconds before the next iteration
 
-                    # Reset change detection after processing
-                    cover_monitor.reset_changes()
-                else:
-                    logging.info('No changes detected')
-
-                await asyncio.sleep(5)  # Reduced sleep time for more responsive monitoring
-
-            except Exception as e:
-                logging.error(f"An error occurred in the main loop: {str(e)}")
-                logging.error(traceback.format_exc())
-                await asyncio.sleep(60)
-
-    finally:
-        cover_monitor.stop()
+        except Exception as e:
+            logging.error(f"An error occurred in the main loop: {str(e)}")
+            logging.error(traceback.format_exc())
+            await asyncio.sleep(60)  # Wait for 1 minute before retrying if an error occurs
 
 
 async def run_application(force: bool):
