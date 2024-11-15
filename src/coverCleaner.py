@@ -149,7 +149,7 @@ def process_collection(file_path, language_data):
         shutil.move(file_path, new_file_path)
         logger.info(f"Collection file moved and renamed to: {new_file_path}")
 
-        return new_file_path
+        return new_file_path, language_data
     else:
         logger.warning(f"No match found for collection: {filename}")
         # Get the base name without backdrop/background indicator for the folder name
@@ -308,7 +308,12 @@ def sanitize_folder_name(folder_name):
 
 def is_collection(filename):
     """Determine if a file is part of a collection based on its filename."""
-    return bool(re.search(r'collection|filmreihe', filename.lower()))
+    # Expand the search to include more collection-related keywords
+    collection_keywords = ['collection', 'filmreihe', 'box set', 'series', 'anthology']
+    for keyword in collection_keywords:
+        if keyword in filename.lower():
+            return True
+    return False
 
 
 def process_image_file(file_path, language_data):
@@ -467,9 +472,8 @@ def archive_existing_content(target_dir: Path):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     dir_name = target_dir.name
 
-    # Determine if it's a collection or a regular poster
-    is_collection = is_collection(dir_name)
-    replaced_subdir = 'Collections' if is_collection else 'Poster'
+    # Determine if it's a collection or a regular
+    replaced_subdir = 'Collections' if is_collection(dir_name) else 'Poster'
 
     # Create a subfolder for this specific item
     replaced_dir = Path(REPLACED_DIR) / replaced_subdir / dir_name
