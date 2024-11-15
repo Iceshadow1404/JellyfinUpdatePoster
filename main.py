@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 async def main_loop(force: bool, webhook_server: WebhookServer):
     updater = UpdateCover()
 
+    # Clear caches before processing
+    gc.collect()
+
     while True:
         try:
             RAW_COVER_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,6 +75,7 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 # Force sync before major operations
                 os.system('sync')
                 await asyncio.sleep(2)
+                gc.collect()  # Force garbage collection before UpdateCover
 
                 if force:
                     logging.info("Force flag was set, resetting it to False after first iteration.")

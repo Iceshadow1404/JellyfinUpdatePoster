@@ -9,8 +9,7 @@ import gc
 import os
 import time
 import concurrent.futures
-from functools import lru_cache, cached_property
-from collections import defaultdict, OrderedDict
+from functools import cached_property
 import psutil
 
 from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY
@@ -18,85 +17,7 @@ from src.constants import POSTER_DIR, COLLECTIONS_DIR, OUTPUT_FILENAME, MISSING,
 
 logger = logging.getLogger(__name__)
 
-class LRUCache:
-    """Size-limited LRU cache for image data"""
-    MEMORY_THRESHOLD_PERCENT = 80  # Percentage of system memory to use
-
-    def __init__(self, max_size_mb=1000):
-        self.max_size = max_size_mb * 1024 * 1024  # Convert MB to bytes
-        self._current_size = 0
-        self.cache = OrderedDict()
-
-    def get(self, key: str) -> Optional[bytes]:
-        # Check system memory usage before retrieving
-        if psutil.virtual_memory().percent > self.MEMORY_THRESHOLD_PERCENT:
-            logger.warning("High memory usage, clearing cache")
-            self.clear()
-            return None
-
-        if key not in self.cache:
-            return None
-
-        # Move to end (most recently used)
-        if key in self.cache:
-            # Move to end (most recently used)
-            value = self.cache.pop(key)
-            self.cache[key] = value
-            return value
-        return None
-
-    def _can_add_item(self, value_size: int) -> bool:
-        """Check if item can be added without exceeding memory threshold"""
-        system_memory = psutil.virtual_memory()
-        if system_memory.percent > self.MEMORY_THRESHOLD_PERCENT:
-            logger.warning("High memory usage, preventing cache addition")
-            return False
-        
-        return self.current_size + value_size <= self.max_size
-
-    def put(self, key: str, value: bytes):
-        # Remove oldest items if adding this would exceed max size
-        value_size = len(value)
-
-        if value_size > self.max_size:
-            logger.warning(f"Single item larger than cache size, skipping cache: {key}")
-            return
-        
-        if not self._can_add_item(value_size):
-            return
-
-        while self.cache and (self.current_size + value_size > self.max_size):
-            _, oldest_value = self.cache.popitem(last=False)
-            self._current_size -= len(oldest_value)
-
-        if key in self.cache:
-            self._current_size -= len(self.cache.pop(key))
-
-        self.cache[key] = value
-        self._current_size += value_size
-
-    def clear(self):
-        self.cache.clear()
-        self._current_size = 0
-        # Force garbage collection after clearing
-        gc.collect()
-
-    def prune(self, percentage: float = 0.5):
-        """Prune cache to a certain percentage of its current size"""
-        items_to_remove = int(len(self.cache) * percentage)
-        for _ in range(items_to_remove):
-            self.cache.popitem(last=False)
-
-    @property
-    def current_size(self):
-        return self._current_size
-
 class UpdateCover:
-    @cached_property
-    def image_cache(self):
-        """Lazy-loaded image cache with controlled memory usage"""
-        return LRUCache(max_size_mb=250)  # Reduced cache size
-
     @cached_property
     def directory_cache(self):
         """Lazy-loaded directory cache"""
@@ -120,7 +41,6 @@ class UpdateCover:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.session:
-            self.image_cache.clear()
             self.directory_cache.clear()
             gc.collect()
             await self.session.close()
@@ -137,22 +57,14 @@ class UpdateCover:
 
     async def read_image(self, image_path: Path) -> bytes:
         """Read image data with caching"""
-        cache_key = str(image_path)
-        cached_data = self.image_cache.get(cache_key)
-
-        if cached_data:
-            return cached_data
-
         try:
             with image_path.open('rb', buffering=1024*1024) as file:  # Buffered reading
                 data = file.read()
-                self.image_cache.put(cache_key, data)
                 return data
         except Exception as e:
             logger.error(f"Error reading image {image_path}: {str(e)}")
             raise
 
-    @lru_cache(maxsize=100)  # Cache directory scan results
     def scan_directories(self):
         """Optimized directory scanning using ThreadPoolExecutor for I/O operations"""
         logger.info("Scanning directories...")
@@ -259,12 +171,13 @@ class UpdateCover:
         logger.warning(missing_folder)
         return None
 
-    @lru_cache(maxsize=1000)
-    def clean_name(self, name: str) -> str:
+    @staticmethod
+    def clean_name(name: str) -> str:
+        """Clean filename - now a static method without caching"""
         invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '&', "'", '!', '?', '[', ']', '!', '&']
         for char in invalid_chars:
             name = name.replace(char, '')
-        return name
+        return name.strip()
 
     @staticmethod
     def find_image(item_dir: Path, filename: str) -> Optional[Path]:
@@ -346,8 +259,8 @@ class UpdateCover:
             del encoded_data
             gc.collect()
 
-    @lru_cache(maxsize=1000)
-    def get_content_type(self, file_path: str) -> str:
+    @staticmethod
+    def get_content_type(file_path: str) -> str:
         ext = file_path.split('.')[-1].lower()
         return {
             'png': 'image/png',
@@ -490,7 +403,6 @@ class UpdateCover:
         except Exception as e:
             logger.error(f"Error in run method: {str(e)}")
         finally:
-            self.clean_name.cache_clear()
             self.missing_folders = []
             gc.collect()
 
