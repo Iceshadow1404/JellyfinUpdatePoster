@@ -158,16 +158,13 @@ def process_collection(file_path, language_data):
 
 
 def process_unmatched_file(file_path, clean_name, year=None, is_collection=False):
-    # Choose the appropriate subfolder based on whether it's a collection
-    subfolder = 'Collections' if is_collection else 'Poster'
-
-    # Get the base folder name
+    """Process an unmatched file by moving it to the appropriate NO_MATCH_FOLDER subfolder."""
     folder_name = f"{clean_name} ({year})" if year else clean_name
 
-    # Create the timestamp subfolder
-    timestamp = get_timestamp_folder()
-    no_match_folder = Path(NO_MATCH_FOLDER) / subfolder / folder_name / timestamp
-    no_match_folder.mkdir(parents=True, exist_ok=True)
+    # Choose the appropriate subfolder based on whether it's a collection
+    subfolder = 'Collections' if is_collection else 'Poster'
+    no_match_folder = os.path.join(NO_MATCH_FOLDER, subfolder, folder_name)
+    os.makedirs(no_match_folder, exist_ok=True)
 
     new_file_path = os.path.join(no_match_folder, os.path.basename(file_path))
     shutil.move(file_path, new_file_path)
