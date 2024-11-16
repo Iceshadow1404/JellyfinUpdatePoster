@@ -113,14 +113,13 @@ def find_collection_match(clean_name, language_data):
 
 
 def process_collection(file_path, language_data):
-    """Process a collection image file, supporting both posters and backgrounds/backdrops."""
     filename = os.path.basename(file_path)
     logger.info(f"Processing collection image file: {filename}")
 
     # Determine if this is a background/backdrop image
     is_background = any(term in filename.lower() for term in ['backdrop', 'background'])
 
-    # Clean name should exclude backdrop/background indicators for matching
+    # Clean name once and reuse
     base_name = re.sub(r'\s*-?\s*(Backdrop|Background)', '', filename, flags=re.IGNORECASE)
     clean_name = clean_name_for_folder(os.path.splitext(base_name)[0])
     matched_collection = find_collection_match(clean_name, language_data)
@@ -129,16 +128,11 @@ def process_collection(file_path, language_data):
         # Use the extracted title from the match
         extracted_title = matched_collection['extracted_title']
         folder_name = sanitize_folder_name(extracted_title)
-
         new_folder = os.path.join(COLLECTIONS_DIR, folder_name)
         os.makedirs(new_folder, exist_ok=True)
 
         # Determine the appropriate filename based on whether it's a background
-        if is_background:
-            new_filename = "background.jpg"
-        else:
-            new_filename = "poster.jpg"
-
+        new_filename = "background.jpg" if is_background else "poster.jpg"
         new_file_path = os.path.join(new_folder, new_filename)
 
         # Archive existing content if necessary
@@ -151,27 +145,16 @@ def process_collection(file_path, language_data):
 
         return new_file_path, language_data
     else:
-        logger.warning(f"No match found for collection: {filename}")
-        # Get the base name without backdrop/background indicator for the folder name
-        base_name = re.sub(r'\s*-?\s*(Backdrop|Background)', '', clean_name, flags=re.IGNORECASE)
-        return process_unmatched_file(file_path, base_name, year=None, is_collection=True)
+        # Process unmatched collection
+        timestamp = get_timestamp_folder()
+        no_match_folder = os.path.join(NO_MATCH_FOLDER, 'Collections', clean_name, timestamp)
+        os.makedirs(no_match_folder, exist_ok=True)
 
+        new_file_path = os.path.join(no_match_folder, os.path.basename(file_path))
+        shutil.move(file_path, new_file_path)
 
-def process_unmatched_file(file_path, clean_name, year=None, is_collection=False):
-    """Process an unmatched file by moving it to the appropriate NO_MATCH_FOLDER subfolder."""
-    folder_name = f"{clean_name} ({year})" if year else clean_name
-
-    # Choose the appropriate subfolder based on whether it's a collection
-    subfolder = 'Collections' if is_collection else 'Poster'
-    timestamp = get_timestamp_folder()
-    no_match_folder = os.path.join(NO_MATCH_FOLDER, subfolder, folder_name, timestamp)
-    os.makedirs(no_match_folder, exist_ok=True)
-
-    new_file_path = os.path.join(no_match_folder, os.path.basename(file_path))
-    shutil.move(file_path, new_file_path)
-
-    logger.info(f"Unmatched {'collection' if is_collection else 'file'} moved to: {new_file_path}")
-    return new_file_path
+        logger.info(f"Unmatched collection moved to: {new_file_path}")
+        return new_file_path, language_data
 
 
 def clean_name(filename):
