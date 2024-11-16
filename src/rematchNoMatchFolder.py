@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 class FolderMatcher:
     def __init__(self, language_data: dict):
+        self.title_cache = {}
         self.language_data = language_data
         self.title_cache = self._build_title_cache()
         self.updater = UpdateCover()
@@ -50,9 +51,8 @@ class FolderMatcher:
 
     @staticmethod
     def _clean_title(title: str) -> str:
-        # Remove year and common suffixes in one pass
-        clean = re.sub(r'\s*\(\d{4}\)|collection$|filmreihe$', '', title, flags=re.IGNORECASE)
-        return clean.lower().strip()
+        clean_name = re.sub(r'\b\d{4}\b', '', title)
+        return clean_name.lower().strip()
 
     def find_matching_folder(self, folder_name: str) -> Tuple[bool, Optional[dict]]:
         # Extract year if present

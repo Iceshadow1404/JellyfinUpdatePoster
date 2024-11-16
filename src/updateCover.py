@@ -395,7 +395,6 @@ class UpdateCover:
         """Main execution method"""
         try:
             await self.initialize()
-            time.sleep(1)
             await self.process_items()
             await self.save_missing_folders()
             self.processing_end_time = time.time()

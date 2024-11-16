@@ -23,7 +23,7 @@ from src.cleanupEmptyFolder import cleanup_empty_folders
 logger = logging.getLogger(__name__)
 
 
-async def main_loop(force: bool, webhook_server: WebhookServer):
+async def main_loop(force: bool, webhook_server: WebhookServer, language_data: dict):
     updater = UpdateCover()
 
     # Clear caches before processing
@@ -56,14 +56,7 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 collect_titles()
                 update_output_file()
 
-                if files or mediux:
-                    if mediux:
-                        await mediux_downloader()
-                    cover_cleaner()
-                    mediux = False
-
-                # Load language data
-                language_data = load_language_data()
+                cover_cleaner(language_data)
 
                 # Create FolderMatcher instance and reprocess unmatched files
                 folder_matcher = FolderMatcher(language_data)
@@ -99,7 +92,7 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
             await asyncio.sleep(60)  # Wait for 1 minute before retrying if an error occurs
 
 
-async def run_application(force: bool):
+async def run_application(force: bool, language_data: dict):
     webhook_server = WebhookServer()
 
     if ENABLE_WEBHOOK:
@@ -109,7 +102,7 @@ async def run_application(force: bool):
 
     await asyncio.gather(
         webhook_server.run_server(),
-        main_loop(force, webhook_server)
+        main_loop(force, webhook_server, language_data)
     )
 
 
@@ -122,7 +115,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        asyncio.run(run_application(args.force))
+        language_data = load_language_data()
+        asyncio.run(run_application(args.force, language_data))
     except KeyboardInterrupt:
         logger.info("Process interrupted by user. Shutting down.")
     except Exception as e:
