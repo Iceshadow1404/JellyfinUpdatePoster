@@ -10,13 +10,10 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
-from src.updateCover import UpdateCover
-from src.rematchNoMatchFolder import FolderMatcher
 from src.constants import LANGUAGE_DATA_FILENAME, RAW_COVER_DIR, COVER_DIR, COLLECTIONS_DIR, CONSUMED_DIR, \
     NO_MATCH_FOLDER, REPLACED_DIR, POSTER_DIR
 
 logger = logging.getLogger(__name__)
-updater = UpdateCover()
 
 LAST_TIMESTAMP = None
 TIME_WINDOW = timedelta(seconds=10)
@@ -506,8 +503,6 @@ def rename_file_for_archive(filename: str, dir_name: str) -> str:
 def cover_cleaner(language_data):
     global LAST_TIMESTAMP
     LAST_TIMESTAMP = None
-
-    folder_matcher = FolderMatcher(language_data)
 
     files = os.listdir(RAW_COVER_DIR)
 
