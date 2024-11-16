@@ -56,6 +56,10 @@ async def main_loop(force: bool, webhook_server: WebhookServer, language_data: d
                 collect_titles()
                 update_output_file()
 
+                # Currently disabled waiting for a response from Mediux
+                # if mediux:
+                #   await mediux_downloader()
+
                 cover_cleaner(language_data)
 
                 # Create FolderMatcher instance and reprocess unmatched files
