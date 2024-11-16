@@ -23,7 +23,7 @@ from src.cleanupEmptyFolder import cleanup_empty_folders
 logger = logging.getLogger(__name__)
 
 
-async def main_loop(force: bool, webhook_server: WebhookServer, language_data: dict):
+async def main_loop(force: bool, webhook_server: WebhookServer):
     updater = UpdateCover()
 
     # Clear caches before processing
@@ -52,6 +52,8 @@ async def main_loop(force: bool, webhook_server: WebhookServer, language_data: d
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
 
+                language_data = load_language_data()
+
                 get_jellyfin_content()
                 collect_titles()
                 update_output_file()
@@ -68,11 +70,6 @@ async def main_loop(force: bool, webhook_server: WebhookServer, language_data: d
 
                 # Clean up empty folders in NO_MATCH_FOLDER
                 cleanup_empty_folders()
-
-                # Force sync before major operations
-                os.system('sync')
-                await asyncio.sleep(2)
-                gc.collect()  # Force garbage collection before UpdateCover
 
                 if force:
                     logging.info("Force flag was set, resetting it to False after first iteration.")
@@ -96,7 +93,7 @@ async def main_loop(force: bool, webhook_server: WebhookServer, language_data: d
             await asyncio.sleep(60)  # Wait for 1 minute before retrying if an error occurs
 
 
-async def run_application(force: bool, language_data: dict):
+async def run_application(force: bool):
     webhook_server = WebhookServer()
 
     if ENABLE_WEBHOOK:
@@ -106,7 +103,7 @@ async def run_application(force: bool, language_data: dict):
 
     await asyncio.gather(
         webhook_server.run_server(),
-        main_loop(force, webhook_server, language_data)
+        main_loop(force, webhook_server)
     )
 
 
@@ -119,8 +116,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        language_data = load_language_data()
-        asyncio.run(run_application(args.force, language_data))
+        asyncio.run(run_application(args.force))
     except KeyboardInterrupt:
         logger.info("Process interrupted by user. Shutting down.")
     except Exception as e:
