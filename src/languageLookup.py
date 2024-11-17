@@ -107,12 +107,67 @@ def is_entry_cache_valid(entry):
         return datetime.now() - last_updated < timedelta(days=CACHE_EXPIRY_DAYS)
     return False
 
+
+def cleanup_unused_language_entries(media_items, processed_data):
+    # Create sets of current media IDs/titles for each category
+    current_items = {
+        'movies': set(),
+        'tv': set(),
+        'collections': set()
+    }
+
+    # Populate sets with current media IDs/titles
+    for item in media_items:
+        tmdb_id = str(item.get("TMDbId")) if item.get("TMDbId") is not None else None
+        media_type = item.get("Type").lower()
+        title = item.get("Name", "Unknown Title")
+
+        if media_type == "series":
+            category = "tv"
+        elif media_type == "movie":
+            category = "movies"
+        elif media_type == "boxset":
+            category = "collections"
+        else:
+            continue
+
+        # Add either TMDb ID or title to the set
+        current_items[category].add(tmdb_id if tmdb_id else title)
+
+    # Create a copy of the processed data to modify
+    cleaned_data = {
+        'movies': {},
+        'tv': {},
+        'collections': {}
+    }
+
+    removed_count = 0
+
+    # Compare and clean up entries
+    for category in processed_data:
+        for key in processed_data[category]:
+            if key in current_items[category]:
+                cleaned_data[category][key] = processed_data[category][key]
+            else:
+                removed_count += 1
+                logger.info(f"Removing unused {category} entry: {key}")
+
+    return cleaned_data, removed_count
+
 # Main function
 def collect_titles():
     processed_data = load_processed_data()
 
     with open(OUTPUT_FILENAME, "r", encoding="utf-8") as file:
         media_items = json.load(file)
+
+    # Clean up unused entries before processing new ones
+    cleaned_data, removed_count = cleanup_unused_language_entries(media_items, processed_data)
+    if removed_count > 0:
+        logger.info(f"Removed {removed_count} unused language entries")
+        processed_data = cleaned_data
+        # Save the cleaned data immediately
+        save_processed_data(processed_data)
 
     needed_requests = 0
     for item in media_items:
