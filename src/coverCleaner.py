@@ -419,10 +419,20 @@ def process_zip_file(zip_path, language_data):
 
 
 def move_to_consumed(file_path):
-    """Move file to Consumed folder, handling existing files."""
+    """Move file to Consumed folder, handling existing files, unless it's a rematch file."""
     if not os.path.exists(file_path):
         logger.warning(f"File not found, skipping move to Consumed: {file_path}")
         return False
+
+    # Check if this is a rematch file
+    if "_REMATCH_MARKER" in file_path:
+        try:
+            os.remove(file_path)
+            logger.info(f"Deleted rematch file: {file_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting rematch file: {str(e)}")
+            return False
 
     os.makedirs(CONSUMED_DIR, exist_ok=True)
     filename = os.path.basename(file_path)

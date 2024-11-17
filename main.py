@@ -25,9 +25,7 @@ logger = logging.getLogger(__name__)
 
 async def main_loop(force: bool, webhook_server: WebhookServer):
     updater = UpdateCover()
-
-    # Clear caches before processing
-    gc.collect()
+    folder_matcher = None
 
     while True:
         try:
@@ -52,21 +50,25 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
 
-                language_data = load_language_data()
-
                 get_jellyfin_content()
                 collect_titles()
                 update_output_file()
+
+                language_data = load_language_data()
+                updater.scan_directories()
+
+                if folder_matcher is None:
+                    folder_matcher = FolderMatcher(language_data)
+                else:
+                    folder_matcher.update_language_data(language_data)
+
+                folder_matcher.reprocess_unmatched_files()
 
                 # Currently disabled waiting for a response from Mediux
                 # if mediux:
                 #   await mediux_downloader()
 
                 cover_cleaner(language_data)
-
-                # Create FolderMatcher instance and reprocess unmatched files
-                folder_matcher = FolderMatcher(language_data)
-                folder_matcher.reprocess_unmatched_files()
 
                 # Clean up empty folders in NO_MATCH_FOLDER
                 cleanup_empty_folders()
