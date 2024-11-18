@@ -16,7 +16,7 @@ from src.constants import LANGUAGE_DATA_FILENAME, RAW_COVER_DIR, COVER_DIR, COLL
 logger = logging.getLogger(__name__)
 
 LAST_TIMESTAMP = None
-TIME_WINDOW = timedelta(seconds=10)
+TIME_WINDOW = timedelta(seconds=60)
 
 def load_language_data():
     try:
@@ -509,6 +509,88 @@ def rename_file_for_archive(filename: str, dir_name: str) -> str:
     elif lower_filename in ['backdrop.jpg', 'background.jpg']:
         return f"{dir_name} - Backdrop.jpg"
     return filename
+
+
+def consolidate_series_folders(base_path=POSTER_DIR):
+    logger.debug(f"Starting consolidate_series_folders for path: {base_path}")
+
+    # Ensure base_path is a Path object and exists
+    base_path = Path(NO_MATCH_FOLDER + '/Poster')
+
+    # Create the path if it doesn't exist
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    logger.debug(f"Absolute path being used: {base_path.resolve()}")
+
+    # Find all series folders
+    try:
+        series_folders = [f for f in os.listdir(base_path) if (base_path / f).is_dir()]
+        logger.debug(f"Found {len(series_folders)} series folders")
+        logger.debug(f"Folders: {series_folders}")
+    except Exception as e:
+        logger.error(f"Error listing directories in {base_path}: {e}")
+        return
+
+    # Group folders by base series name (without year)
+    series_groups = {}
+    for folder in series_folders:
+        # Extract base name without year
+        base_name = re.sub(r'\s*\(\d{4}\)', '', folder).strip()
+        logger.debug(f"Processing folder: {folder}, base name: {base_name}")
+
+        if base_name not in series_groups:
+            series_groups[base_name] = []
+        series_groups[base_name].append(folder)
+
+    # Log series groups
+    logger.debug("Series Groups:")
+    for base_name, folders in series_groups.items():
+        logger.debug(f"{base_name}: {folders}")
+        if len(folders) > 1:
+            # Sort folders to prioritize the one with year
+            sorted_folders = sorted(folders, key=lambda x: '(' in x, reverse=True)
+
+            # Use the first (preferably year-containing) folder as the target
+            target_folder = sorted_folders[0]
+            target_path = base_path / target_folder
+
+            # Merge other folders into the target folder
+            for source_folder in sorted_folders[1:]:
+                source_path = base_path / source_folder
+
+                target_timestamps = [
+                    datetime.strptime(d, "%Y-%m-%d_%H-%M-%S")
+                    for d in os.listdir(target_path)
+                    if re.match(r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}', d)
+                ]
+
+                for item in os.listdir(source_path):
+                    # Check if item is a timestamp folder
+                    if re.match(r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}', item):
+                        source_timestamp = datetime.strptime(item, "%Y-%m-%d_%H-%M-%S")
+
+                        # Check if any target timestamp is within 60 seconds
+                        if any((abs(source_timestamp - ts).total_seconds() <= 60) for ts in target_timestamps):
+                            source_items_path = source_path / item
+                            for subitem in os.listdir(source_items_path):
+                                target_timestamp_path = target_path / item
+                                target_timestamp_path.mkdir(parents=True, exist_ok=True)
+
+                                target_subitem_path = target_timestamp_path / subitem
+                                source_subitem_path = source_items_path / subitem
+
+                                shutil.move(str(source_subitem_path), str(target_subitem_path))
+
+                            # Remove the empty source timestamp folder
+                            source_items_path.rmdir()
+
+                # Remove the empty source folder if it's now empty
+                if not os.listdir(source_path):
+                    source_path.rmdir()
+
+                logger.info(f"Merged folder {source_folder} into {target_folder}")
+
+
 
 def cover_cleaner(language_data):
     global LAST_TIMESTAMP
