@@ -69,7 +69,8 @@ class FolderMatcher:
 
     @staticmethod
     def _clean_title(title: str) -> str:
-        clean_name = re.sub(r'\b\d{4}\b', '', title)
+        # Remove all parenthetical content (including years and empty parentheses)
+        clean_name = re.sub(r'\s*\([^)]*\)\s*', '', title)
         return clean_name.lower().strip()
 
     def find_matching_folder(self, folder_name: str) -> Tuple[bool, Optional[dict]]:
