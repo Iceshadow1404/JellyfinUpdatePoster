@@ -174,7 +174,7 @@ def get_jellyfin_content(silent=False):
 
     if items:
         processed_items = process_items(items)
-        processed_items.sort(key=lambda x: x['Name'])
+        processed_items.sort(key=lambda x: x['Name'].lower())
 
         with open(OUTPUT_FILENAME, 'w', encoding='utf-8') as f:
             json.dump(processed_items, f, ensure_ascii=False, indent=4)

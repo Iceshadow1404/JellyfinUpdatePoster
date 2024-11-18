@@ -70,8 +70,8 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
 
                 cover_cleaner(language_data)
 
-                consolidate_series_folders()
                 # Clean up empty folders in NO_MATCH_FOLDER
+                consolidate_series_folders()
                 cleanup_empty_folders()
 
                 if force:

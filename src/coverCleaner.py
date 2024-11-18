@@ -3,7 +3,7 @@ import zipfile
 import re
 import shutil
 import requests
-from fuzzywuzzy import fuzz
+from rapidfuzz import fuzz
 import logging
 from PIL import Image
 from datetime import datetime, timedelta
@@ -37,7 +37,7 @@ def convert_to_jpg(file_path):
             with Image.open(file_path) as img:
                 # Remove XMP metadata to prevent "XMP data is too long" error
                 img.info.pop('xmp', None)
-                
+
                 rgb_img = img.convert('RGB')
                 new_file_path = f"{filename}.jpg"
                 rgb_img.save(new_file_path, 'JPEG')
@@ -73,7 +73,7 @@ def find_collection_match(clean_name, language_data):
         for title in collection_data.get('titles', []):
             # Clean up the comparison title as well
             clean_title = re.sub(r'\s*collection\s*$', '', title, flags=re.IGNORECASE)
-            score = fuzz.ratio(clean_name.lower(), clean_title.lower())
+            score = fuzz.ratio(clean_name.lower(), clean_title.lower(), score_cutoff=0)
 
             if score > best_score:
                 best_score = score
@@ -89,7 +89,7 @@ def find_collection_match(clean_name, language_data):
         clean_extracted = re.sub(r'\s*collection\s*$', '',
                                  collection_data.get('extracted_title', ''),
                                  flags=re.IGNORECASE)
-        score = fuzz.ratio(clean_name.lower(), clean_extracted.lower())
+        score = fuzz.ratio(clean_name.lower(), clean_extracted.lower(), score_cutoff=0)
 
         if score > best_score:
             best_score = score
@@ -107,7 +107,6 @@ def find_collection_match(clean_name, language_data):
 
     logger.warning(f"No collection match found for: {clean_name}")
     return None
-
 
 def process_collection(file_path, language_data):
     filename = os.path.basename(file_path)
@@ -268,7 +267,7 @@ def find_match(clean_name, language_data):
 
 def compare_titles(clean_name, item_name, item_year, file_year):
     """Compare titles considering the year if available."""
-    name_ratio = fuzz.ratio(clean_name.lower(), item_name.lower())
+    name_ratio = fuzz.ratio(clean_name.lower(), item_name.lower(), score_cutoff=0)
 
     if file_year and item_year:
         if file_year == item_year:
@@ -299,7 +298,7 @@ def is_collection(filename):
 def process_image_file(file_path, language_data):
     """Process an individual image file."""
     filename = os.path.basename(file_path)
-    logger.info(f"Processing image file: {filename}")
+    logger.debug(f"Processing image file: {filename}")
 
     # Convert the image to JPG format
     file_path = convert_to_jpg(file_path)
@@ -357,7 +356,6 @@ def process_image_file(file_path, language_data):
         return True
 
     else:
-        logger.warning(f"No match found for: {filename}")
         series_name, file_year = get_series_name(filename)
         year_to_use = year or file_year
         timestamp = get_timestamp_folder()
@@ -448,7 +446,7 @@ def move_to_consumed(file_path):
 
     try:
         shutil.move(file_path, consumed_file_path)
-        logger.info(f"File moved to Consumed folder: {consumed_file_path}")
+        logger.debug(f"File moved to Consumed folder: {consumed_file_path}")
         return True
     except Exception as e:
         logger.error(f"Error moving file to Consumed folder: {str(e)}")
@@ -611,7 +609,7 @@ def cover_cleaner(language_data):
                     destination_path = os.path.join(CONSUMED_DIR, os.path.basename(original_file_path))
 
                     shutil.copy(original_file_path, destination_path)
-                    logger.info(f"File moved to {destination_path}")
+                    logger.debug(f"File moved to {destination_path}")
 
                     if process_image_file(file_path, language_data):
                         # Check if the file was moved during processing

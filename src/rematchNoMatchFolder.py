@@ -4,7 +4,7 @@ from typing import Dict, Tuple, List, Set, Optional
 import logging
 import zipfile
 from datetime import datetime
-from fuzzywuzzy import fuzz
+from rapidfuzz import fuzz, process
 import re
 import os
 import shutil
@@ -94,29 +94,36 @@ class FolderMatcher:
             else:
                 logger.debug("Found title match but year mismatch")
 
-        # If no exact match, try fuzzy matching
+        # If no exact match, try fuzzy matching using RapidFuzz
         logger.debug("No exact match found, trying fuzzy matching")
-        best_match = None
-        best_score = 0
 
-        for cached_title, (category, item_data) in self.title_cache.items():
-            score = fuzz.ratio(clean_folder, cached_title)
+        # Get all cached titles as a list for process.extractOne
+        cached_titles = list(self.title_cache.keys())
 
-            if score > best_score:
-                logger.debug(f"New best fuzzy match: {cached_title} with score {score}")
-
-            if score > best_score and score >= 90:
-                if not folder_year or str(item_data.get('year')) == folder_year:
-                    best_score = score
-                    best_match = item_data
-                    logger.debug(f"Found better fuzzy match: {cached_title} (score: {score})")
+        # Use RapidFuzz's process.extractOne for efficient matching
+        best_match = process.extractOne(
+            clean_folder,
+            cached_titles,
+            scorer=fuzz.ratio,
+            score_cutoff=90
+        )
 
         if best_match:
-            logger.debug(f"Best fuzzy match found with score {best_score}")
+            matched_title, score = best_match[0], best_match[1]
+            category, item_data = self.title_cache[matched_title]
+
+            logger.debug(f"Found fuzzy match: {matched_title} with score {score}")
+
+            # Check year if present
+            if not folder_year or str(item_data.get('year')) == folder_year:
+                logger.debug("Year matches or not specified")
+                return True, item_data
+            else:
+                logger.debug("Year mismatch in fuzzy match")
+                return False, None
         else:
             logger.debug("No suitable match found")
-
-        return bool(best_match), best_match
+            return False, None
 
     def reprocess_unmatched_files(self) -> None:
         logger.info("Starting reprocessing of unmatched files")
@@ -234,4 +241,3 @@ class FolderMatcher:
             elif os.path.exists(zip_path):
                 consumed_path = os.path.join(CONSUMED_DIR, os.path.basename(zip_path))
                 shutil.move(zip_path, consumed_path)
-
