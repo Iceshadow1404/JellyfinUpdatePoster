@@ -49,6 +49,7 @@ BLACKLIST = {
 
 
 def update_output_file():
+    cleanup_blacklist()
     """Updates the output file by removing blacklisted items."""
     # Check if the blacklist file exists
     if not os.path.exists(BLACKLIST_FILENAME):
@@ -80,6 +81,57 @@ def update_output_file():
 
     if len(items) - len(filtered_items) != 0:
         logger.info(f"Updated {OUTPUT_FILENAME}. Removed {len(items) - len(filtered_items)} blacklisted items.")
+
+
+def cleanup_blacklist():
+    """
+    Checks the blacklist and removes IDs that no longer exist in the output file.
+    Distinguishes between regular IDs and Library IDs.
+    """
+    # Check if required files exist
+    if not os.path.exists(BLACKLIST_FILENAME) or not os.path.exists(OUTPUT_FILENAME):
+        logger.warning("Blacklist or output file doesn't exist. Cleanup not possible.")
+        return
+
+    # Define protected example IDs that should never be removed
+    PROTECTED_IDS = {"EXAMPLE_ID"}
+    PROTECTED_LIBRARY_IDS = {"EXAMPLE_LIBRARY_ID"}
+
+    # Load blacklist and output file
+    blacklist = load_blacklist()
+    with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
+        output_items = json.load(f)
+
+    # Collect all IDs and Library IDs from output file
+    existing_ids = set(item['Id'] for item in output_items)
+    existing_library_ids = set(item['LibraryId'] for item in output_items)
+
+    # Find IDs to remove, excluding protected IDs
+    ids_to_remove = [item_id for item_id in blacklist['ids']
+                     if item_id not in existing_ids and item_id not in PROTECTED_IDS]
+    libraries_to_remove = [lib_id for lib_id in blacklist['libraries']
+                           if lib_id not in existing_library_ids and lib_id not in PROTECTED_LIBRARY_IDS]
+
+    # Remove non-existent IDs
+    for item_id in ids_to_remove:
+        blacklist['ids'].remove(item_id)
+        logger.info(f"Removed ID {item_id} from blacklist - no longer exists in jellyfin")
+
+    # Remove non-existent Library IDs
+    for lib_id in libraries_to_remove:
+        blacklist['libraries'].remove(lib_id)
+        logger.info(f"Removed Library ID {lib_id} from blacklist - no longer exists in jellyfin")
+
+    # Save updated blacklist
+    save_blacklist(blacklist)
+
+    # Log summary
+    total_removed = len(ids_to_remove) + len(libraries_to_remove)
+    if total_removed > 0:
+        logger.info(f"Blacklist cleaned up: removed {len(ids_to_remove)} IDs and {len(libraries_to_remove)} "
+                    f"Library IDs")
+    else:
+        logger.info("No outdated IDs found in blacklist")
 
 # Example usage
 if __name__ == "__main__":
