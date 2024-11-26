@@ -64,9 +64,8 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
 
                 folder_matcher.reprocess_unmatched_files()
 
-                # Currently disabled waiting for a response from Mediux
-                # if mediux:
-                #   await mediux_downloader()
+                if mediux:
+                  mediux_downloader()
 
                 cover_cleaner(language_data)
 
