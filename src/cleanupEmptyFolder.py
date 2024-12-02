@@ -1,12 +1,12 @@
 import os
 import logging
 from pathlib import Path
-from src.constants import NO_MATCH_FOLDER
+from src.constants import COVER_DIR
 
 logger = logging.getLogger(__name__)
 
 
-def cleanup_empty_folders(start_path: Path = Path(NO_MATCH_FOLDER)) -> None:
+def cleanup_empty_folders(start_path: Path = Path(COVER_DIR)) -> None:
 
     if not start_path.exists():
         logger.debug(f"Path does not exist: {start_path}")

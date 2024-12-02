@@ -13,7 +13,7 @@ from src.logging import setup_logging
 from src.updateCover import UpdateCover
 from src.languageLookup import collect_titles
 from src.blacklist import update_output_file
-from src.constants import RAW_COVER_DIR, MEDIUX_FILE
+from src.constants import RAW_COVER_DIR, MEDIUX_FILE, COVER_DIR
 from src.mediux_downloader import mediux_downloader
 from src.webhook import WebhookServer
 from src.config import ENABLE_WEBHOOK
@@ -69,9 +69,9 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
 
                 cover_cleaner(language_data)
 
-                # Clean up empty folders in NO_MATCH_FOLDER
+                # Clean up empty folders in COVER_DIR
                 consolidate_series_folders()
-                cleanup_empty_folders()
+                cleanup_empty_folders(COVER_DIR)
 
                 if force:
                     logging.info("Force flag was set, resetting it to False after first iteration.")
