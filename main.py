@@ -55,7 +55,6 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 update_output_file()
 
                 language_data = load_language_data()
-                updater.scan_directories()
 
                 if folder_matcher is None:
                     folder_matcher = FolderMatcher(language_data)
@@ -77,10 +76,8 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     logging.info("Force flag was set, resetting it to False after first iteration.")
                     force = False
 
-                # Use context manager for UpdateCover
-                async with updater:
-                    logging.info('Run the UpdateCover process')
-                    await updater.run()
+                logging.info('Run the UpdateCover process')
+                await UpdateCover()
 
                 # Explicit cleanup after processing
                 gc.collect()
