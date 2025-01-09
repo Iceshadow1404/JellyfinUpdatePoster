@@ -32,8 +32,8 @@ class UpdateCover:
         self.session: Optional[aiohttp.ClientSession] = None
         self.processing_start_time = None
         self.processing_end_time = None
-        self.semaphore = asyncio.Semaphore(10)  # Limit concurrent requests
-        self.batch_size = 20  # Number of items to process in parallel
+        self.semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
+        self.batch_size = 100  # Number of items to process in parallel
 
     async def __aenter__(self):
         self.session = aiohttp.ClientSession()
@@ -54,16 +54,6 @@ class UpdateCover:
         await self.load_items()
         logger.info(
             f"Initialization complete. Found {len(self.directory_lookup)} directories and {len(self.items_to_process)} items to process.")
-
-    async def read_image(self, image_path: Path) -> bytes:
-        """Read image data with caching"""
-        try:
-            with image_path.open('rb', buffering=1024*1024) as file:  # Buffered reading
-                data = file.read()
-                return data
-        except Exception as e:
-            logger.error(f"Error reading image {image_path}: {str(e)}")
-            raise
 
     def scan_directories(self):
         """Optimized directory scanning using ThreadPoolExecutor for I/O operations"""
