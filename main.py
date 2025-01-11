@@ -51,8 +51,8 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
 
                 get_jellyfin_content()
-                collect_titles()
                 update_output_file()
+                collect_titles()
 
                 language_data = load_language_data()
                 updater.scan_directories()
