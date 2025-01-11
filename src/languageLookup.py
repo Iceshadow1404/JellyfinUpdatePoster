@@ -1,3 +1,5 @@
+import sys
+
 import requests
 import json
 import logging
@@ -15,6 +17,26 @@ BASE_URL_MOVIE = "https://api.themoviedb.org/3/movie/"
 BASE_URL_TV = "https://api.themoviedb.org/3/tv/"
 BASE_URL_COLLECTION = "https://api.themoviedb.org/3/collection/"
 CACHE_EXPIRY_DAYS = 7  # Cache expiration period in days
+
+def validate_tmdb_key():
+
+    test_url = "https://api.themoviedb.org/3/authentication"
+    params = {
+        "api_key": TMDB_KEY
+    }
+    try:
+        response = requests.get(test_url, params=params)
+        if response.status_code == 200:
+            return True
+        elif response.status_code == 401:
+            logger.error("Invalid TMDB API key")
+            input()
+        else:
+            logger.error(f"Unexpected response from TMDB API: {response.status_code}")
+            input()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error validating TMDB API key: {str(e)}")
+        input()
 
 # Function to fetch titles from TMDb
 def get_tmdb_titles(tmdb_id, media_type="movie"):
@@ -156,6 +178,11 @@ def cleanup_unused_language_entries(media_items, processed_data):
 
 # Main function
 def collect_titles():
+    # Validate TMDB API key before proceeding
+    if not validate_tmdb_key():
+        logger.error("Failed to validate TMDB API key. Aborting title collection.")
+        return False
+
     processed_data = load_processed_data()
 
     with open(OUTPUT_FILENAME, "r", encoding="utf-8") as file:
