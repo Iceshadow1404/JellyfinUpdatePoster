@@ -5,6 +5,8 @@ import argparse
 import time
 import traceback
 import gc
+import datetime
+from typing import Optional
 
 from src.coverCleaner import cover_cleaner, load_language_data, consolidate_series_folders
 from src.getIDs import get_jellyfin_content
@@ -19,16 +21,25 @@ from src.webhook import WebhookServer
 from src.config import ENABLE_WEBHOOK
 from src.rematchNoMatchFolder import FolderMatcher
 from src.cleanupEmptyFolder import cleanup_empty_folders
+from src.scheduler import get_next_scheduled_time, is_scheduled_time, format_time_until_next, SCHEDULED_TIMES
 
 logger = logging.getLogger(__name__)
-
 
 async def main_loop(force: bool, webhook_server: WebhookServer):
     updater = UpdateCover()
     folder_matcher = None
+    last_check_minute: Optional[int] = None
 
     while True:
         try:
+            current_minute = datetime.datetime.now().minute
+
+            # Check for scheduled execution once per minute
+            schedule_triggered = False
+            if current_minute != last_check_minute:
+                schedule_triggered = is_scheduled_time()
+                last_check_minute = current_minute
+
             RAW_COVER_DIR.mkdir(parents=True, exist_ok=True)
 
             mediux = False
@@ -44,8 +55,10 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
             content_changed = check_jellyfin_content()
             webhook_triggered = webhook_server.get_trigger_status() if ENABLE_WEBHOOK else False
 
-            if files or content_changed or force or mediux or webhook_triggered:
-                if webhook_triggered:
+            if files or content_changed or force or mediux or webhook_triggered or schedule_triggered:
+                if schedule_triggered:
+                    logging.info('Process triggered by scheduled time!')
+                elif webhook_triggered:
                     logging.info('Process triggered by webhook!')
                 else:
                     logging.info('Found files, new Jellyfin content, or --force flag set!')
@@ -87,7 +100,12 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
             else:
                 logging.info('Found no files or new content on Jellyfin')
 
-            await asyncio.sleep(30)  # Wait for 30 seconds before the next iteration
+                # Calculate and log time until next execution
+                if SCHEDULED_TIMES:
+                    next_scheduled_time = get_next_scheduled_time()
+                    logging.info(format_time_until_next(next_scheduled_time))
+
+                await asyncio.sleep(30)  # Wait for 30 seconds before the next iteration
 
         except Exception as e:
             logging.error(f"An error occurred in the main loop: {str(e)}")

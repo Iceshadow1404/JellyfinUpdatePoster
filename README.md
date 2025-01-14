@@ -36,7 +36,8 @@ services:
       - TMDB_API_KEY=your-tmdb-api-key
       - INCLUDE_EPISODES=false
       - TZ=Europe/Berlin
-      - enable_webhook=false
+      - ENABLE_WEBHOOK=false
+      - SCHEDULED_TIMES=06:00,12:00,18:00 # Optional: Schedule poster updates at specific times (HH:MM)
     volumes:
       - ./your-local-path:/mount
     ports:
@@ -68,7 +69,8 @@ JELLYFIN_URL=http://your-jellyfin-server:8096
 JELLYFIN_API_KEY=your-jellyfin-api-key
 TMDB_API_KEY=your-tmdb-api-key
 INCLUDE_EPISODES=false
-enable_webhook=false
+ENABLE_WEBHOOK=false
+SCHEDULED_TIMES=06:00,12:00,18:00 # Optional: Schedule poster updates at specific times (HH:MM)
 ```
 
 Required configuration variables:
