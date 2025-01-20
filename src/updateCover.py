@@ -15,7 +15,7 @@ from typing import Dict, List, Optional
 import aiohttp
 
 # Local imports
-from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY
+from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, BATCH_SIZE
 from src.constants import (
     POSTER_DIR,
     COLLECTIONS_DIR,
@@ -47,7 +47,7 @@ class UpdateCover:
 
         # Performance settings
         self.semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
-        self.batch_size = 100  # Number of items to process in parallel
+        self.batch_size = BATCH_SIZE  # Number of items to process in parallel
 
     # Context Management Methods
     async def __aenter__(self):
