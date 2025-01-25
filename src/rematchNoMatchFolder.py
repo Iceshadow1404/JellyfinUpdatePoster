@@ -17,7 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 class FolderMatcher:
+    """Matches media folders to metadata using exact and fuzzy matching techniques.
+
+    Attributes:
+        language_data: Nested dictionary containing media metadata
+        title_cache: Preprocessed mapping of normalized titles to media items
+        updater: Cover update handler
+    """
+
     def __init__(self, language_data: dict):
+        """Initialize with language data and build initial title cache."""
         logger.debug("Initializing FolderMatcher")
         self.language_data = language_data
         self.title_cache = self._build_title_cache()
@@ -25,220 +34,253 @@ class FolderMatcher:
         logger.debug(f"Title cache built with {len(self.title_cache)} entries")
 
     def update_language_data(self, new_language_data: dict):
-        """Update language data and rebuild the title cache."""
+        """Refresh metadata and rebuild search cache.
+
+        Args:
+            new_language_data: Updated media metadata dictionary
+        """
         logger.debug(f"Updating language data with categories: {list(new_language_data.keys())}")
-        logger.debug(f"Collections in new data: {len(new_language_data.get('collections', {}))}")
         old_cache_size = len(self.title_cache)
         self.language_data = new_language_data
         self.title_cache = self._build_title_cache()
         new_cache_size = len(self.title_cache)
         logger.debug(f"Title cache updated. Old size: {old_cache_size}, New size: {new_cache_size}")
-        logger.debug(f"Cache difference: {new_cache_size - old_cache_size} entries")
 
     def _build_title_cache(self) -> Dict[str, Tuple[str, dict]]:
+        """Create normalized title lookup dictionary from metadata.
+
+        Processes movies, TV shows, and collections. Normalizes titles by:
+        - Removing parenthetical content (e.g., years)
+        - Converting to lowercase
+
+        Returns:
+            Dictionary mapping clean titles to (category, metadata) tuples
+        """
         cache = {}
         logger.debug("Building title cache")
 
+        # Process different media categories
         for category in ['movies', 'tv', 'collections']:
             category_data = self.language_data.get(category, {})
             if not category_data:
-                logger.debug(f"No data found for category: {category}")
+                logger.debug(f"Skipping empty category: {category}")
                 continue
 
-            logger.debug(f"Processing {category} with {len(category_data)} items")
+            logger.debug(f"Indexing {len(category_data)} {category} items")
             for item_id, item_data in category_data.items():
-                if item_id == 'last_updated':
+                if item_id == 'last_updated':  # Skip metadata timestamps
                     continue
 
+                # Aggregate all possible titles
                 titles = set(item_data.get('titles', []))
-                if 'extracted_title' in item_data:
-                    titles.add(item_data['extracted_title'])
-                if 'originaltitle' in item_data:
-                    titles.add(item_data['originaltitle'])
+                titles.update({item_data.get('extracted_title'), item_data.get('originaltitle')})
+                titles.discard(None)  # Remove any None values from optional fields
 
-                logger.debug(f"Found {len(titles)} titles for item {item_id}")
-
+                # Normalize and index each title variant
                 for title in titles:
                     clean_title = self._clean_title(title)
                     if clean_title:
                         cache[clean_title] = (category, item_data)
-                        logger.debug(f"Added to cache: {clean_title} -> {category}")
+                        logger.debug(f"Cached: {clean_title} -> {category}")
 
-        logger.debug(f"Title cache built with {len(cache)} total entries")
+        logger.debug(f"Title cache contains {len(cache)} searchable entries")
         return cache
 
     @staticmethod
     def _clean_title(title: str) -> str:
-        # Remove all parenthetical content (including years and empty parentheses)
+        """Normalize titles for consistent matching.
+
+        Example:
+            "The Matrix (1999)" -> "the matrix"
+        """
+        # Remove all content within parentheses including whitespace
         clean_name = re.sub(r'\s*\([^)]*\)\s*', '', title)
         return clean_name.lower().strip()
 
     def find_matching_folder(self, folder_name: str) -> Tuple[bool, Optional[dict]]:
-        logger.debug(f"Attempting to match folder: {folder_name}")
+        """Find metadata match for a folder using multi-stage matching.
 
-        # Extract year if present
+        Matching process:
+        1. Exact match with year verification
+        2. Fuzzy match (90%+ similarity) with year verification
+
+        Args:
+            folder_name: Raw folder name to match
+
+        Returns:
+            Tuple (match_found, matched_metadata)
+        """
+        logger.debug(f"Matching folder: {folder_name}")
+
+        # Extract publication year if present in folder name
         year_match = re.search(r'\((\d{4})\)', folder_name)
         folder_year = year_match.group(1) if year_match else None
-        if folder_year:
-            logger.debug(f"Extracted year from folder name: {folder_year}")
+        logger.debug(f"Detected folder year: {folder_year or 'None'}")
 
-        # Clean folder name
         clean_folder = self._clean_title(folder_name)
-        logger.debug(f"Cleaned folder name: {clean_folder}")
+        logger.debug(f"Normalized folder name: {clean_folder}")
 
-        # First try exact matches in cache
+        # Stage 1: Exact title match
         if clean_folder in self.title_cache:
             category, item_data = self.title_cache[clean_folder]
-            if not folder_year or str(item_data.get('year')) == folder_year:
-                logger.debug(f"Found exact match in category {category}")
+            item_year = str(item_data.get('year', ''))
+
+            if not folder_year or item_year == folder_year:
+                logger.debug(f"Exact match in {category} (Year: {item_year})")
                 return True, item_data
-            else:
-                logger.debug("Found title match but year mismatch")
+            logger.debug(f"Year mismatch: {item_year} vs {folder_year}")
 
-        # If no exact match, try fuzzy matching using RapidFuzz
-        logger.debug("No exact match found, trying fuzzy matching")
-
-        # Get all cached titles as a list for process.extractOne
-        cached_titles = list(self.title_cache.keys())
-
-        # Use RapidFuzz's process.extractOne for efficient matching
+        # Stage 2: Fuzzy matching with similarity threshold
+        logger.debug("Initiating fuzzy match")
         best_match = process.extractOne(
             clean_folder,
-            cached_titles,
+            list(self.title_cache.keys()),
             scorer=fuzz.ratio,
-            score_cutoff=90
+            score_cutoff=90  # Require high confidence match
         )
 
-        if best_match:
-            matched_title, score = best_match[0], best_match[1]
-            category, item_data = self.title_cache[matched_title]
-
-            logger.debug(f"Found fuzzy match: {matched_title} with score {score}")
-
-            # Check year if present
-            if not folder_year or str(item_data.get('year')) == folder_year:
-                logger.debug("Year matches or not specified")
-                return True, item_data
-            else:
-                logger.debug("Year mismatch in fuzzy match")
-                return False, None
-        else:
-            logger.debug("No suitable match found")
+        if not best_match:
+            logger.debug("No qualifying matches found")
             return False, None
 
-    def reprocess_unmatched_files(self) -> None:
-        logger.info("Starting reprocessing of unmatched files")
+        matched_title, score = best_match[0], best_match[1]
+        category, item_data = self.title_cache[matched_title]
+        logger.debug(f"Fuzzy match: {matched_title} (Score: {score}/100)")
 
-        # Process each subfolder type
-        for subfolder in ['Collections', 'Poster']:
-            no_match_path = Path(NO_MATCH_FOLDER) / subfolder
+        # Verify year consistency for high-confidence matches
+        item_year = str(item_data.get('year', ''))
+        if folder_year and item_year != folder_year:
+            logger.debug(f"Rejecting match due to year mismatch: {item_year} vs {folder_year}")
+            return False, None
+
+        return True, item_data
+
+    def reprocess_unmatched_files(self) -> None:
+        """Re-process files in NO_MATCH_FOLDER using current metadata.
+
+        Processing workflow:
+        1. Scan Collections/Poster subdirectories
+        2. Match series folders to current metadata
+        3. Package matched assets into timestamped ZIPs
+        4. Dispatch for processing and clean empty folders
+        """
+        logger.info("Initiating unmatched files reprocessing")
+
+        for media_type in ['Collections', 'Poster']:
+            no_match_path = Path(NO_MATCH_FOLDER) / media_type
             if not no_match_path.exists():
-                logger.debug(f"No match folder does not exist: {no_match_path}")
+                logger.debug(f"Skipping non-existent {media_type} directory")
                 continue
 
-            logger.debug(f"Processing subfolder: {subfolder}")
-
-            # Get all series folders
+            logger.info(f"Processing {media_type} unmatched items")
             series_folders = [f for f in no_match_path.iterdir() if f.is_dir()]
-            logger.debug(f"Found {len(series_folders)} series folders in {subfolder}")
+            logger.debug(f"Found {len(series_folders)} candidate folders")
 
-            # Process series folders in parallel
             with ThreadPoolExecutor() as executor:
                 for series_folder in series_folders:
-                    logger.debug(f"Attempting to match series folder: {series_folder.name}")
-                    has_match, matched_item = self.find_matching_folder(series_folder.name)
+                    logger.debug(f"Attempting match for: {series_folder.name}")
+                    match_found, metadata = self.find_matching_folder(series_folder.name)
 
-                    if not has_match:
-                        logger.debug(f"No match found for folder: {series_folder.name}")
+                    if not match_found:
+                        logger.debug(f"No current match for {series_folder.name}")
                         continue
-                    else:
-                        logger.debug(f"Match found for folder: {series_folder.name}")
 
-                    # Get all dated subfolders
+                    # Process all versioned subfolders in parallel
                     dated_subfolders = [f for f in series_folder.iterdir() if f.is_dir()]
-                    if not dated_subfolders:
-                        logger.debug(f"No dated subfolders found in {series_folder.name}")
-                        continue
+                    logger.debug(f"Found {len(dated_subfolders)} asset versions")
 
-                    logger.debug(f"Processing {len(dated_subfolders)} dated subfolders for {series_folder.name}")
+                    # Prepare parameters for parallel execution
+                    task_params = [(subfolder, series_folder.name) for subfolder in dated_subfolders]
+                    executor.map(self.process_dated_subfolder, task_params)
 
-                    # Process dated subfolders in parallel
-                    params = [(subfolder, series_folder.name) for subfolder in dated_subfolders]
-                    executor.map(self.process_dated_subfolder, params)
-
-                    # Remove empty series folder
+                    # Cleanup empty parent folder
                     if not any(series_folder.iterdir()):
                         logger.debug(f"Removing empty series folder: {series_folder}")
                         series_folder.rmdir()
 
-        logger.info("Finished reprocessing unmatched files")
+        logger.info("Completed reprocessing cycle")
 
     def process_dated_subfolder(self, params: Tuple[Path, str]) -> None:
-        dated_subfolder, series_name = params
-        logger.debug(f"Processing dated subfolder: {dated_subfolder} for series: {series_name}")
+        """Process a versioned asset folder containing multiple files.
 
-        # Skip if empty
-        files_to_process = [f for f in dated_subfolder.iterdir() if f.is_file()]
-        if not files_to_process:
-            logger.debug(f"No files to process in {dated_subfolder}")
+        Args:
+            params: Tuple containing:
+                - Path to dated subfolder
+                - Parent series folder name
+        """
+        dated_subfolder, series_name = params
+        logger.debug(f"Processing asset version: {dated_subfolder.name}")
+
+        files = [f for f in dated_subfolder.iterdir() if f.is_file()]
+        if not files:
+            logger.debug("Skipping empty subfolder")
             return
 
-        logger.debug(f"Found {len(files_to_process)} files to process")
-
-        # Create zip file with special rematch marker
+        # Create unique ZIP filename with rematch identifier
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        zip_filename = f"{series_name}_{timestamp}_REMATCH_MARKER.zip"
-        zip_path = Path(RAW_COVER_DIR) / zip_filename
-
-        logger.debug(f"Creating zip file: {zip_filename}")
+        zip_name = f"{series_name}_{timestamp}_REMATCH_MARKER.zip"
+        zip_path = Path(RAW_COVER_DIR) / zip_name
 
         try:
-            # Create zip file with all images
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for file in files_to_process:
-                    zipf.write(file, file.name)
-                    logger.debug(f"Added {file.name} to {zip_filename}")
+            # Package files into ZIP archive
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as archive:
+                for file in files:
+                    archive.write(file, file.name)
+                    logger.debug(f"Archived: {file.name}")
 
-            logger.debug(f"Created zip file successfully: {zip_path}")
-
-            # Process the zip file
-            logger.debug(f"Starting to process zip file: {zip_path}")
+            logger.info(f"Created rematch package: {zip_path.name}")
             self._process_zip_file(str(zip_path))
 
-            # Clean up processed files
-            for file in files_to_process:
-                logger.debug(f"Removing processed file: {file}")
+            # Cleanup processed files
+            for file in files:
                 file.unlink()
+            logger.debug(f"Cleaned {len(files)} source files")
 
             # Remove empty subfolder
             if not any(dated_subfolder.iterdir()):
-                logger.debug(f"Removing empty dated subfolder: {dated_subfolder}")
                 dated_subfolder.rmdir()
+                logger.debug(f"Removed empty directory: {dated_subfolder}")
 
-        except Exception as e:
-            logger.error(f"Error processing subfolder {dated_subfolder}: {str(e)}")
-            logger.debug(f"Stack trace: {traceback.format_exc()}")
+        except Exception as error:
+            logger.error(f"Failed processing {dated_subfolder}: {str(error)}")
+            logger.debug(f"Error details:\n{traceback.format_exc()}")
+
+            # Ensure failed ZIPs are cleaned up
+            if zip_path.exists():
+                zip_path.unlink()
 
     def _process_zip_file(self, zip_path: str) -> None:
+        """Handle ZIP processing through external module with cleanup.
+
+        Special handling for rematch packages:
+        - Direct deletion after processing instead of moving to consumed
+
+        Args:
+            zip_path: Full path to ZIP file
+        """
         try:
+            # Import processor dynamically to avoid circular dependencies
             from src.coverCleaner import process_zip_file
+
             process_zip_file(zip_path, self.language_data)
+            logger.debug(f"Completed processing: {zip_path}")
 
-            # Delete the zip file directly if it's a rematch
-            if "_REMATCH_MARKER" in zip_path and os.path.exists(zip_path):
-                os.remove(zip_path)
-                logger.info(f"Deleted rematch zip file: {zip_path}")
-            else:
-                # Move to consumed only if it's not a rematch
+            # Special handling for rematch packages
+            if "_REMATCH_MARKER" in zip_path:
                 if os.path.exists(zip_path):
-                    consumed_path = os.path.join(CONSUMED_DIR, os.path.basename(zip_path))
-                    shutil.move(zip_path, consumed_path)
-
-        except Exception as e:
-            logger.error(f"Error processing ZIP file {zip_path}: {str(e)}")
-            # Clean up zip file even if processing fails
-            if "_REMATCH_MARKER" in zip_path and os.path.exists(zip_path):
-                os.remove(zip_path)
-            elif os.path.exists(zip_path):
-                consumed_path = os.path.join(CONSUMED_DIR, os.path.basename(zip_path))
+                    os.remove(zip_path)
+                    logger.info(f"Removed rematch package: {zip_path}")
+            else:
+                # Standard processing cleanup
+                consumed_path = Path(CONSUMED_DIR) / Path(zip_path).name
                 shutil.move(zip_path, consumed_path)
+                logger.debug(f"Moved to consumed: {consumed_path.name}")
+
+        except Exception as error:
+            logger.error(f"ZIP processing failed: {str(error)}")
+
+            # Ensure failed ZIPs are properly disposed
+            if "_REMATCH_MARKER" in zip_path and Path(zip_path).exists():
+                Path(zip_path).unlink()
+            else:
+                shutil.move(zip_path, CONSUMED_DIR)
