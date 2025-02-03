@@ -137,7 +137,21 @@ def smart_merge_files(source_data):
                 os.remove(RAW_COVER_DIR / source['zip_file'])
 
             logging.info(f"Smart merged ZIP created for {series_name}: {output_zip_name}")
+    with open(MEDIUX_FILE, 'w'):
+        pass
 
+def timer(name: str):
+    import datetime
+    class Watch:
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            logging.debug(f"{name} took {datetime.datetime.now() - self.start}")
+
+        def __enter__(self):
+            self.start = datetime.datetime.now()
+            return self
+
+    return Watch()
 
 def download_images(file_collection, zf: zipfile.ZipFile, set_name: str, downloaded_files=None):
     if downloaded_files is None:
@@ -193,17 +207,20 @@ def extract_json_segment(text):
 
 def download_and_save_image(file_url: str, file_name: str, zf: zipfile.ZipFile):
     try:
-        response = requests.get(file_url)
-        if response.status_code == 200:
-            source_bytes = response.content
-            img = Image.open(io.BytesIO(source_bytes))
-            if img.format != 'JPEG':
-                img = img.convert('RGB')
-            with zf.open(file_name, 'w') as fp:
-                img.save(fp, 'JPEG')
-            logging.info(f'Downloaded and saved {file_name}')
-        else:
-            logging.info(f'Failed to download {file_name}. Status code: {response.status_code}', success=False)
+        with timer("Downloading URL"):
+            with requests.get(file_url) as response:
+                if response.status_code == 200:
+                    source_bytes = response.content
+                    img = Image.open(io.BytesIO(source_bytes))
+                    if img.format != 'JPEG':
+                        with timer("Converting to RGB"):
+                            img = img.convert('RGB')
+                    with timer("Saving to zip file"):
+                        with zf.open(file_name, 'w') as fp:
+                            img.save(fp, 'JPEG')
+                    logging.info(f'Downloaded and saved {file_name}')
+                else:
+                    logging.info(f'Failed to download {file_name}. Status code: {response.status_code}', success=False)
     except Exception as e:
         logging.info(f'Error downloading {file_name}: {str(e)}', success=False)
 
