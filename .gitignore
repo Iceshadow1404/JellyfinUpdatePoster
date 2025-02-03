@@ -8,6 +8,9 @@ Consumed
 Replaced
 *.json
 *.txt
-!blacklist.json
 !requirements.txt
 /Cover/
+
+__pycache__
+
+
