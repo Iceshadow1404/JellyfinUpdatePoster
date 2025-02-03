@@ -148,7 +148,7 @@ Drop your image or .zip files into the `RawCover` folder.
 - Check status via GET request to /status.
 
 ## Mediux Downloader
-- Simply paste a Mediux set link into the mediux.txt file
+- Simply paste a Mediux set or boxset link into the mediux.txt file
 
 ## Contact
 
