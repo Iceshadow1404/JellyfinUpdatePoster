@@ -23,41 +23,53 @@ def mediux_downloader():
     with open(MEDIUX_FILE, 'r') as file:
         download_urls = list(map(str.strip, file))
 
-    for index, download_url in enumerate(download_urls):
-        if not download_url.startswith("https://mediux.pro/sets"):
-            logging.info("Please select a set link instead of a collection link.")
-            print("Invalid Link:", download_url)
-            sys.exit(1)
+    backlog = list((str(index + 1), url) for index, url in enumerate(download_urls))
+    while backlog:
+        index, download_url = backlog.pop()
+        is_set = download_url.startswith("https://mediux.pro/sets")
+        is_boxset = download_url.startswith("https://mediux.pro/boxsets")
+        if not any([is_set, is_boxset]):
+            logging.info(f"Please select a set/boxset link instead of a collection link: {download_url}")
+            exit(1)
 
-        logging.info(f'Downloading set information for URL {index + 1}')
+        logging.info(f'Downloading set information for URL {index} ({download_url})')
         html = download_set_html(download_url)
         logging.info('Extracting set information')
         data = extract_json_segment(html)
-        set_data = data['set']
-        set_name = get_set_name(set_data)
-        set_name = clean_name(set_name)
-        series_name = get_series_name(set_name)
-        files = set_data['files']
-        zip_filename = f"{set_name}_{index + 1}.zip"
-        logging.info(f'Saving all set images to {zip_filename}')
+        if is_set:
+            save_set(index, data['set'], source_data, download_url, downloaded_files)
+        elif is_boxset:
+            logging.info(f"Processing boxset {data['boxset']['name']} by {data['boxset']['user_created']['username']}")
+            for seti, set in reversed(list(enumerate(data['boxset']['sets']))):
+                logging.info(f"Backlogging {set['set_name']} (set_id: {set['id']})")
+                backlog.append((index + '_' + str(seti + 1), "https://mediux.pro/sets/" + str(set['id'])))
+        else:
+            raise NotImplemented
 
-        with zipfile.ZipFile(RAW_COVER_DIR / zip_filename, 'w') as zf:
-            downloaded_files = download_images(files, zf, set_name, downloaded_files)
-
-        # Save additional information
-        source_data[zip_filename] = {
-            'series_name': series_name,
-            'files': files,
-            'source_url': download_url
-        }
-
-        logging.info(f"All images downloaded for URL {index + 1}!")
+        logging.info(f"All images downloaded for URL {index} ({download_url})!")
 
     # Smart merge strategy
     smart_merge_files(source_data)
 
-    with open(MEDIUX_FILE, 'w') as file:
-        pass
+
+def save_set(postfix, set_data, source_data, download_url, downloaded_files):
+    set_name = get_set_name(set_data)
+    set_name = clean_name(set_name)
+    series_name = get_series_name(set_name)
+    files = set_data['files']
+    zip_filename = f"{set_name}_{postfix}.zip"
+    logging.info(f'Saving all set images to {zip_filename}')
+
+    with zipfile.ZipFile(RAW_COVER_DIR / zip_filename, 'w') as zf:
+        download_images(files, zf, set_name, downloaded_files)
+
+    # Save additional information
+    source_data[zip_filename] = {
+        'series_name': series_name,
+        'files': files,
+        'source_url': download_url
+    }
+
 
 def get_set_name(set_data):
     if set_data.get('show'):
@@ -73,6 +85,7 @@ def get_set_name(set_data):
     else:
         set_name = "Unknown Collection"
     return set_name
+
 
 def get_series_name(set_name):
     return re.sub(r'\s*\(\d{4}\)$', '', set_name)
@@ -152,18 +165,22 @@ def download_images(file_collection, zf: zipfile.ZipFile, set_name: str, downloa
 
     return downloaded_files
 
+
 def download_set_html(url):
     response = requests.get(url)
     return response.text
 
+
 def is_data_chunk(chunk):
-    return "set_description" in chunk or "original_name" in chunk
+    return any(it in chunk for it in ["set_description", "original_name", "user_created"])
+
 
 def extract_json_from_chunk(chunk_text: str):
     string_begin = chunk_text.find('"')
     string_end = chunk_text.rfind('"')
     outer_json: str = json.loads(chunk_text[string_begin:string_end + 1])
     return json.loads(outer_json[outer_json.find(':') + 1:])[3]
+
 
 def extract_json_segment(text):
     push_regex = re.compile('<script>self.__next_f.push(.*?)</script>')
@@ -172,6 +189,7 @@ def extract_json_segment(text):
                   re.finditer(push_regex, text)) if is_data_chunk(chunk)]
     json_chunks = [extract_json_from_chunk(chunk) for chunk in pushes]
     return json_chunks[0]
+
 
 def download_and_save_image(file_url: str, file_name: str, zf: zipfile.ZipFile):
     try:
@@ -188,6 +206,7 @@ def download_and_save_image(file_url: str, file_name: str, zf: zipfile.ZipFile):
             logging.info(f'Failed to download {file_name}. Status code: {response.status_code}', success=False)
     except Exception as e:
         logging.info(f'Error downloading {file_name}: {str(e)}', success=False)
+
 
 if __name__ == '__main__':
     mediux_downloader()
