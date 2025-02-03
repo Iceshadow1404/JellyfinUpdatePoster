@@ -8,6 +8,8 @@ import requests
 from collections import defaultdict
 import warnings
 import os
+import time
+import socket
 
 from src.logging import logging
 from src.constants import RAW_COVER_DIR, MEDIUX_FILE
@@ -205,6 +207,23 @@ def extract_json_segment(text):
     return json_chunks[0]
 
 
+def handle_dns_failure(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except socket.gaierror as e:
+            logging.error(f"DNS resolution failed: {str(e)}")
+            logging.error("Waiting 20 seconds before retry...")
+            time.sleep(20)
+            return func(*args, **kwargs)
+    return wrapper
+
+@handle_dns_failure
+def download_set_html(url):
+    response = requests.get(url)
+    return response.text
+
+@handle_dns_failure
 def download_and_save_image(file_url: str, file_name: str, zf: zipfile.ZipFile):
     try:
         with timer("Downloading URL"):
@@ -220,9 +239,9 @@ def download_and_save_image(file_url: str, file_name: str, zf: zipfile.ZipFile):
                             img.save(fp, 'JPEG')
                     logging.info(f'Downloaded and saved {file_name}')
                 else:
-                    logging.info(f'Failed to download {file_name}. Status code: {response.status_code}', success=False)
+                    logging.error(f'Failed to download {file_name}. Status code: {response.status_code}')
     except Exception as e:
-        logging.info(f'Error downloading {file_name}: {str(e)}', success=False)
+        logging.error(f'Error downloading {file_name}: {str(e)}')
 
 
 if __name__ == '__main__':
