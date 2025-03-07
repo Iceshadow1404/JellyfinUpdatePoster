@@ -201,12 +201,69 @@ class UpdateCover:
         except Exception as e:
             logger.error(f"Error deleting backdrops for {item.get('Name')}: {str(e)}")
 
+    async def get_jellyfin_image_hash(self, item_id: str, image_type: str = 'Primary', index: int = 0) -> Optional[str]:
+        """Get hash of the current image on Jellyfin server"""
+        try:
+            url = f"{JELLYFIN_URL}/Items/{item_id}/Images/{image_type}/{index}"
+            headers = {'X-Emby-Token': API_KEY, 'Connection': 'keep-alive'}
+
+            async with self.semaphore:
+                async with self.session.get(url, headers=headers) as response:
+                    if response.status == 404:
+                        return None  # Image doesn't exist
+
+                    response.raise_for_status()
+                    image_data = await response.read()
+                    return self.calculate_hash(image_data)
+        except Exception as e:
+            logger.debug(f"Error getting image hash from Jellyfin: {str(e)}")
+            return None
+
+    def calculate_hash(self, data: bytes) -> str:
+        """Calculate a simple hash of image data"""
+        import hashlib
+        return hashlib.md5(data).hexdigest()
+
+    def get_local_image_hash(self, image_path: Path) -> Optional[str]:
+        """Get hash of a local image file"""
+        try:
+            if not image_path.exists():
+                return None
+
+            with image_path.open('rb') as f:
+                data = f.read()
+                return self.calculate_hash(data)
+        except Exception as e:
+            logger.debug(f"Error calculating hash for {image_path}: {str(e)}")
+            return None
+
+    async def are_images_identical(self, item_id: str, image_path: Path, image_type: str = 'Primary') -> bool:
+        """Compare if the local image is identical to the one on Jellyfin"""
+        if not image_path.exists():
+            return False
+
+        jellyfin_hash = await self.get_jellyfin_image_hash(item_id, image_type)
+        if not jellyfin_hash:
+            return False  # Image doesn't exist on Jellyfin or error occurred
+
+        local_hash = self.get_local_image_hash(image_path)
+        if not local_hash:
+            return False  # Error reading local file
+
+        return jellyfin_hash == local_hash
+
     async def update_jellyfin(self, id: str, image_path: Path, item: Dict, image_type: str = 'Primary',
                               extra_info: str = '', delete_existing: bool = False):
-        """Update image in Jellyfin"""
+        """Update image in Jellyfin only if needed"""
         try:
             if not image_path.exists():
                 logger.warning(f"Image file not found: {image_path}. Skipping.")
+                return
+
+            # Skip upload if images are identical
+            identical = await self.are_images_identical(id, image_path, image_type)
+            if identical:
+                logger.info(f"Image {image_type} for {item.get('Name')} - {extra_info} unchanged. Skipping upload.")
                 return
 
             if image_type == 'Backdrop' and delete_existing:
@@ -232,8 +289,9 @@ class UpdateCover:
         except Exception as e:
             self._log_error(item['Name'], image_type, extra_info, str(e))
         finally:
-            del encoded_data
-            gc.collect()
+            if 'encoded_data' in locals():
+                del encoded_data
+                gc.collect()
 
     # Processing Methods
     async def process_item(self, item: Dict):
