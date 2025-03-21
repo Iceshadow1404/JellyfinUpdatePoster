@@ -90,6 +90,10 @@ def process_items(items: List[Dict]) -> List[Dict]:
     boxsets = []
 
     for item in items:
+        # Skip virtual items
+        if item.get('LocationType') == 'Virtual':
+            logger.debug(f"Skipping virtual item: {item.get('Name', 'Unknown')} (ID: {item.get('Id', 'Unknown')})")
+            continue
         if item['Type'] != 'BoxSet':
             item['Name'] = clean_name(clean_movie_name(item['Name']))
             if 'OriginalTitle' in item:
