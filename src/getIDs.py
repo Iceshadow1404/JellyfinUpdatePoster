@@ -72,7 +72,7 @@ def get_series_and_movies() -> Optional[List[Dict]]:
                     logger.info(f"Processing tags found in {len(items_with_tags)} items. Waiting 5 seconds before retry...")
                     for item in items_with_tags:
                         logger.info(f"Item with processing tag: {item['Name']} (ID: {item['Id']})")
-                    time.sleep(5)
+                    time.sleep(20)
                     continue  # Retry the request
 
             return items
