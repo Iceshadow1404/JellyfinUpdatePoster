@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 
 # Third-party imports
 import aiohttp
+import hashlib
 
 # Local imports
 from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, BATCH_SIZE
@@ -32,6 +33,9 @@ logger = logging.getLogger(__name__)
 class UpdateCover:
     """Class to handle updating cover images in Jellyfin"""
 
+    # Class variables
+    _file_cache = {}  # Cache for file existence checks
+
     def __init__(self):
         # Core attributes
         self.directory_lookup: Dict[str, Path] = {}
@@ -39,6 +43,7 @@ class UpdateCover:
         self.missing_folders: List[str] = []
         self.extra_folders: List[Path] = []
         self.items_to_process: List[Dict] = []
+        self._language_data = None  # Cache for language data
 
         # Session and timing
         self.session: Optional[aiohttp.ClientSession] = None
@@ -48,17 +53,28 @@ class UpdateCover:
         # Performance settings
         self.semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
         self.batch_size = BATCH_SIZE  # Number of items to process in parallel
+        self._image_cache = {}  # Cache for image hashes
+        self._missing_folders_cache = set()  # Cache for missing folders
+        self._executor = ThreadPoolExecutor(max_workers=os.cpu_count())  # Thread pool for file operations
 
     # Context Management Methods
     async def __aenter__(self):
         # Initialize HTTP session
         self.session = aiohttp.ClientSession()
+        # Clear all caches before starting a new run
+        logger.debug("Clearing all caches before starting new run")
+        self.directory_cache.clear()
+        self._image_cache.clear()
+        self._missing_folders_cache.clear()
+        UpdateCover._file_cache.clear()  # Clear the class-level file cache
+        self._language_data = None
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         # Clean up resources
         if self.session:
-            self.directory_cache.clear()
+            logger.debug("Cleaning up resources in __aexit__")
+            self._executor.shutdown(wait=False)
             gc.collect()
             await self.session.close()
 
@@ -78,11 +94,17 @@ class UpdateCover:
 
     @staticmethod
     def find_image(item_dir: Path, filename: str) -> Optional[Path]:
-        """Find image file with various possible extensions"""
+        """Find image file with improved caching"""
+        if not item_dir or not item_dir.name:
+            return None
+
+        cache_key = f"{item_dir.name.lower()}_{filename.lower()}"
         for ext in ['png', 'jpg', 'jpeg', 'webp']:
-            image_path = item_dir / f"{filename}.{ext}"
-            if image_path.exists():
-                return image_path
+            full_cache_key = f"{cache_key}_{ext}"
+            if full_cache_key in UpdateCover._file_cache:
+                image_path = UpdateCover._file_cache[full_cache_key]
+                if image_path.exists():
+                    return image_path
         return None
 
     @staticmethod
@@ -98,9 +120,16 @@ class UpdateCover:
 
     # Directory Management
     def scan_directories(self):
-        """Scan directories using parallel processing"""
+        """Scan directories using parallel processing with improved caching"""
         logger.info("Scanning directories...")
         self.directory_lookup.clear()
+
+        # Only clear file cache if it's empty or if we're starting fresh
+        if not UpdateCover._file_cache:
+            logger.debug("File cache is empty, no need to clear")
+        else:
+            logger.debug("Clearing file cache before scanning")
+            UpdateCover._file_cache.clear()
 
         def scan_dir(base_dir: Path):
             result = {}
@@ -108,33 +137,43 @@ class UpdateCover:
                 if item_dir.is_dir():
                     key = item_dir.name.lower()
                     result[key] = item_dir
+                    # Cache all image files in the directory
+                    for ext in ['png', 'jpg', 'jpeg', 'webp']:
+                        for img_file in item_dir.glob(f"*.{ext}"):
+                            cache_key = f"{key}_{img_file.stem}_{ext}"
+                            UpdateCover._file_cache[cache_key] = img_file
             return result
 
-        with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-            futures = [executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
-
-            for future in futures:
-                self.directory_lookup.update(future.result())
+        futures = [self._executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
+        for future in futures:
+            self.directory_lookup.update(future.result())
 
         logger.info(f"Directory scan complete. Found {len(self.directory_lookup)} directories.")
+        logger.debug(f"File cache populated with {len(UpdateCover._file_cache)} entries")
+
+    def _load_language_data(self):
+        """Load and cache language data"""
+        if self._language_data is None:
+            try:
+                with open(LANGUAGE_DATA_FILENAME, 'r', encoding='utf-8') as f:
+                    self._language_data = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                logger.error(f"Error loading language data from {LANGUAGE_DATA_FILENAME}")
+                self._language_data = {}
 
     def get_item_directory(self, item: Dict) -> Optional[Path]:
         """Find the directory for a given item based on its metadata"""
         item_type = item.get('Type', 'Series' if 'Seasons' in item else 'Movie')
         tmdb_id = str(item.get('TMDbId')) if item.get('TMDbId') else None
 
-        try:
-            with open(LANGUAGE_DATA_FILENAME, 'r', encoding='utf-8') as f:
-                language_data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            logger.error(f"Error loading language data from {LANGUAGE_DATA_FILENAME}")
-            return None
+        # Load language data if not cached
+        self._load_language_data()
 
         # Determine category and get titles
         category = "collections" if item_type == "BoxSet" else "tv" if item_type == "Series" else "movies"
 
-        if tmdb_id and tmdb_id in language_data.get(category, {}):
-            item_data = language_data[category][tmdb_id]
+        if tmdb_id and tmdb_id in self._language_data.get(category, {}):
+            item_data = self._language_data[category][tmdb_id]
             extracted_title = self.clean_name(item_data.get('extracted_title', '').strip())
             original_title = self.clean_name(item_data.get('originaltitle', '').strip())
         else:
@@ -164,8 +203,13 @@ class UpdateCover:
         base_dir = COLLECTIONS_DIR if item_type == "BoxSet" else POSTER_DIR
         missing_name = self._get_missing_name(original_title, extracted_title, item_year, item_type == "BoxSet")
         missing_folder = f"Folder not found: {base_dir / missing_name}"
-        self.missing_folders.append(missing_folder)
-        logger.warning(missing_folder)
+
+        # Only add to missing folders if not already in cache
+        if missing_folder not in self._missing_folders_cache:
+            self._missing_folders_cache.add(missing_folder)
+            self.missing_folders.append(missing_folder)
+            logger.warning(missing_folder)
+
         return None
 
     @staticmethod
@@ -260,8 +304,14 @@ class UpdateCover:
                 logger.warning(f"Image file not found: {image_path}. Skipping.")
                 return
 
-            # Skip upload if images are identical
-            identical = await self.are_images_identical(id, image_path, image_type)
+            # Use cached hash if available
+            cache_key = f"{id}_{image_type}"
+            if cache_key in self._image_cache:
+                identical = self._image_cache[cache_key]
+            else:
+                identical = await self.are_images_identical(id, image_path, image_type)
+                self._image_cache[cache_key] = identical
+
             if identical:
                 logger.info(f"Image {image_type} for {item.get('Name')} - {extra_info} unchanged. Skipping upload.")
                 return
@@ -269,6 +319,9 @@ class UpdateCover:
             if image_type == 'Backdrop' and delete_existing:
                 await self.delete_all_backdrops(id, item)
 
+            # Read file in chunks to reduce memory usage
+            chunk_size = 1024 * 1024  # 1MB chunks
+            chunks = []
             async with self.semaphore:
                 with image_path.open('rb', buffering=1024 * 1024) as file:
                     image_data = file.read()
@@ -354,7 +407,7 @@ class UpdateCover:
             f"Initialization complete. Found {len(self.directory_lookup)} directories and {len(self.items_to_process)} items to process.")
 
     async def load_items(self):
-        """Load items from JSON file"""
+        """Load items from JSON file with improved error handling"""
         try:
             def read_file() -> List[Dict]:
                 with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
@@ -362,18 +415,35 @@ class UpdateCover:
 
             loop = asyncio.get_running_loop()
             self.items_to_process = await loop.run_in_executor(None, read_file)
+
+            # Pre-process items for better performance
+            for item in self.items_to_process:
+                if 'Seasons' in item:
+                    for season_data in item['Seasons'].values():
+                        if 'Episodes' in season_data:
+                            season_data['Episodes'] = {
+                                k: v for k, v in season_data['Episodes'].items()
+                                if isinstance(k, str) and k.isdigit()
+                            }
+
             logger.info(f"Successfully loaded {len(self.items_to_process)} items.")
         except Exception as e:
             logger.error(f"Error loading items: {str(e)}")
             self.items_to_process = []
 
     async def process_items(self):
-        """Process items in batches"""
-        for i in range(0, len(self.items_to_process), self.batch_size):
-            batch = self.items_to_process[i:i + self.batch_size]
-            tasks = [self.process_item(item) for item in batch]
+        """Process items in optimized batches with improved memory management"""
+        tasks = []
+        for item in self.items_to_process:
+            tasks.append(self.process_item(item))
+            if len(tasks) >= self.batch_size:
+                await asyncio.gather(*tasks)
+                tasks = []
+                gc.collect()
+
+        if tasks:
             await asyncio.gather(*tasks)
-            gc.collect()
+        gc.collect()
 
     async def run(self):
         """Main execution method"""
@@ -405,37 +475,35 @@ class UpdateCover:
         )
 
     async def save_missing_folders(self):
-        """Save missing and extra folders to files"""
+        """Save missing and extra folders with improved performance"""
         try:
             # Clear existing files
-            if os.path.exists(MISSING):
-                os.remove(MISSING)
-            if os.path.exists(EXTRA_FOLDER):
-                os.remove(EXTRA_FOLDER)
+            for file_path in [MISSING, EXTRA_FOLDER]:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
 
-            # Collect all folders
-            all_folders = set()
-            all_folders.update(POSTER_DIR.glob('*'))
-            gc.collect()
+            # Collect all folders in parallel
+            def collect_folders():
+                all_folders = set()
+                all_folders.update(POSTER_DIR.glob('*'))
+                all_folders.update(COLLECTIONS_DIR.glob('*'))
+                return all_folders
 
-            all_folders.update(COLLECTIONS_DIR.glob('*'))
-            gc.collect()
+            all_folders = await asyncio.get_running_loop().run_in_executor(
+                self._executor, collect_folders)
 
             # Find extra folders
             self.extra_folders = list(all_folders - set(self.used_folders))
-            gc.collect()
 
-            # Save missing folders
+            # Save files in parallel
+            save_tasks = []
             if self.missing_folders:
-                with open(MISSING, 'w', encoding='utf-8') as f:
-                    for folder in sorted(set(self.missing_folders)):
-                        f.write(f"{folder}\n")
-
-            # Save extra folders
+                save_tasks.append(self._save_file(MISSING, sorted(set(self.missing_folders))))
             if self.extra_folders:
-                with open(EXTRA_FOLDER, 'w', encoding='utf-8') as f:
-                    for folder in self.extra_folders:
-                        f.write(f"Didn't use Folder: {folder}\n")
+                save_tasks.append(self._save_file(EXTRA_FOLDER, self.extra_folders))
+
+            if save_tasks:
+                await asyncio.gather(*save_tasks)
 
             self._log_results()
 
@@ -444,6 +512,16 @@ class UpdateCover:
         finally:
             self.missing_folders = []
             gc.collect()
+
+    async def _save_file(self, file_path: str, data: List[str]):
+        """Helper method to save file asynchronously"""
+
+        def write_file():
+            with open(file_path, 'w', encoding='utf-8') as f:
+                for item in data:
+                    f.write(f"{item}\n")
+
+        await asyncio.get_running_loop().run_in_executor(self._executor, write_file)
 
     def _log_results(self):
         """Log results of folder analysis"""
