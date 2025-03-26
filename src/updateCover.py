@@ -191,9 +191,11 @@ class UpdateCover:
             item_data = self._language_data[category][tmdb_id]
             extracted_title = self.clean_name(item_data.get('extracted_title', '').strip())
             original_title = self.clean_name(item_data.get('originaltitle', '').strip())
+            english_title = self.clean_name(item_data.get('english_title', '').strip())
         else:
             extracted_title = self.clean_name(item.get('Name', '').strip())
             original_title = self.clean_name(item.get('OriginalTitle', extracted_title).strip())
+            english_title = extracted_title
 
         item_year = item.get('Year')
         possible_keys = (
@@ -216,7 +218,7 @@ class UpdateCover:
 
         # Handle missing directory
         base_dir = COLLECTIONS_DIR if item_type == "BoxSet" else POSTER_DIR
-        missing_name = self._get_missing_name(original_title, extracted_title, item_year, item_type == "BoxSet")
+        missing_name = self._get_missing_name(english_title, extracted_title, item_year, item_type == "BoxSet")
         missing_folder = f"Folder not found: {base_dir / missing_name}"
 
         # Only add to missing folders if not already in cache
@@ -228,12 +230,12 @@ class UpdateCover:
         return None
 
     @staticmethod
-    def _get_missing_name(original_title: str, extracted_title: str, item_year: str, is_collection: bool) -> str:
+    def _get_missing_name(english_title: str, extracted_title: str, item_year: str, is_collection: bool) -> str:
         """Helper method to generate missing folder name"""
-        use_original = original_title and not any(ord(char) > 127 for char in original_title)
+        use_english = english_title and not any(ord(char) > 127 for char in english_title)
         if is_collection:
-            return original_title if use_original else extracted_title
-        return f"{original_title} ({item_year})" if use_original else f"{extracted_title} ({item_year})"
+            return english_title if use_english else extracted_title
+        return f"{english_title} ({item_year})" if use_english else f"{extracted_title} ({item_year})"
 
     # Jellyfin API Operations
     async def delete_all_backdrops(self, item_id: str, item: Dict):
