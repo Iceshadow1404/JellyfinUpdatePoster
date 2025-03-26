@@ -1,9 +1,9 @@
- name: Build Docker Container
+name: Build Docker Container
 
 on:
   push:
     branches:
-      - testing
+      - main
 
 jobs:
   docker:
@@ -26,4 +26,4 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           push: true
-          tags: iceshadow/jellyfinupdateposter:testing
+          tags: iceshadow/jellyfinupdateposter:latest
