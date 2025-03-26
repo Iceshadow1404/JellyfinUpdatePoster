@@ -68,7 +68,6 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                 collect_titles()
 
                 language_data = load_language_data()
-                updater.scan_directories()
 
                 if folder_matcher is None:
                     folder_matcher = FolderMatcher(language_data)

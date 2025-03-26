@@ -55,7 +55,7 @@ class UpdateCover:
         self.batch_size = BATCH_SIZE  # Number of items to process in parallel
         self._image_cache = {}  # Cache for image hashes
         self._missing_folders_cache = set()  # Cache for missing folders
-        self._executor = ThreadPoolExecutor(max_workers=os.cpu_count())  # Thread pool for file operations
+        self._executor = None  # Initialize as None, create when needed
 
     # Context Management Methods
     async def __aenter__(self):
@@ -68,13 +68,17 @@ class UpdateCover:
         self._missing_folders_cache.clear()
         UpdateCover._file_cache.clear()  # Clear the class-level file cache
         self._language_data = None
+        # Create new executor if needed
+        if self._executor is None or self._executor._shutdown:
+            self._executor = ThreadPoolExecutor(max_workers=os.cpu_count())
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         # Clean up resources
         if self.session:
             logger.debug("Cleaning up resources in __aexit__")
-            self._executor.shutdown(wait=False)
+            if self._executor and not self._executor._shutdown:
+                self._executor.shutdown(wait=False)
             gc.collect()
             await self.session.close()
 
@@ -133,20 +137,31 @@ class UpdateCover:
 
         def scan_dir(base_dir: Path):
             result = {}
-            for item_dir in base_dir.glob('*'):
-                if item_dir.is_dir():
-                    key = item_dir.name.lower()
-                    result[key] = item_dir
-                    # Cache all image files in the directory
-                    for ext in ['png', 'jpg', 'jpeg', 'webp']:
-                        for img_file in item_dir.glob(f"*.{ext}"):
-                            cache_key = f"{key}_{img_file.stem}_{ext}"
-                            UpdateCover._file_cache[cache_key] = img_file
+            try:
+                for item_dir in base_dir.glob('*'):
+                    if item_dir.is_dir():
+                        key = item_dir.name.lower()
+                        result[key] = item_dir
+                        # Cache all image files in the directory
+                        for ext in ['png', 'jpg', 'jpeg', 'webp']:
+                            for img_file in item_dir.glob(f"*.{ext}"):
+                                try:
+                                    cache_key = f"{key}_{img_file.stem}_{ext}"
+                                    UpdateCover._file_cache[
+                                        cache_key] = img_file.resolve()  # Use resolve() to get absolute path
+                                except Exception as e:
+                                    logger.warning(f"Error caching file {img_file}: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error scanning directory {base_dir}: {str(e)}")
             return result
 
-        futures = [self._executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
-        for future in futures:
-            self.directory_lookup.update(future.result())
+        try:
+            futures = [self._executor.submit(scan_dir, dir_path) for dir_path in [POSTER_DIR, COLLECTIONS_DIR]]
+            for future in futures:
+                self.directory_lookup.update(future.result())
+        except Exception as e:
+            logger.error(f"Error in scan_directories: {str(e)}")
+            raise
 
         logger.info(f"Directory scan complete. Found {len(self.directory_lookup)} directories.")
         logger.debug(f"File cache populated with {len(UpdateCover._file_cache)} entries")
@@ -399,6 +414,9 @@ class UpdateCover:
     async def initialize(self):
         """Initialize the update process"""
         self.missing_folders = []
+        # Ensure executor is initialized
+        if self._executor is None or self._executor._shutdown:
+            self._executor = ThreadPoolExecutor(max_workers=os.cpu_count())
         self.scan_directories()
         self.processing_start_time = time.time()
 
