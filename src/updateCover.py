@@ -98,17 +98,11 @@ class UpdateCover:
 
     @staticmethod
     def find_image(item_dir: Path, filename: str) -> Optional[Path]:
-        """Find image file with improved caching"""
-        if not item_dir or not item_dir.name:
-            return None
-
-        cache_key = f"{item_dir.name.lower()}_{filename.lower()}"
+        """Find image file with various possible extensions"""
         for ext in ['png', 'jpg', 'jpeg', 'webp']:
-            full_cache_key = f"{cache_key}_{ext}"
-            if full_cache_key in UpdateCover._file_cache:
-                image_path = UpdateCover._file_cache[full_cache_key]
-                if image_path.exists():
-                    return image_path
+            image_path = item_dir / f"{filename}.{ext}"
+            if image_path.exists():
+                return image_path
         return None
 
     @staticmethod
@@ -407,10 +401,11 @@ class UpdateCover:
                     self.update_jellyfin(season_data['Id'], season_img, item, 'Primary', f'Season {int(season_num)}'))
 
             # Episode images
-            for ep_num, ep_id in season_data.get('Episodes', {}).items():
-                if ep_img := self.find_image(item_dir, f'S{season_num}E{ep_num.zfill(2)}'):
-                    tasks.append(
-                        self.update_jellyfin(ep_id, ep_img, item, 'Primary', f'S{int(season_num)}E{int(ep_num)}'))
+            if 'Episodes' in season_data:
+                for ep_num, ep_id in season_data['Episodes'].items():
+                    if ep_img := self.find_image(item_dir, f'S{season_num}E{ep_num.zfill(2)}'):
+                        tasks.append(
+                            self.update_jellyfin(ep_id, ep_img, item, 'Primary', f'S{int(season_num)}E{int(ep_num)}'))
 
     # Initialization and Main Execution
     async def initialize(self):
