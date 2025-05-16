@@ -61,6 +61,10 @@ def validate_tmdb_key():
 
 # Fetch titles from TMDb with retry mechanism
 def get_tmdb_titles(tmdb_id, media_type="movie", max_retries=3, retry_delay=2):
+    """
+    Get titles for a media item from TMDB API.
+    Returns a dictionary with all_titles and english_title.
+    """
     if media_type == "movie":
         base_url = BASE_URL_MOVIE
         title_field = "title"
@@ -73,9 +77,13 @@ def get_tmdb_titles(tmdb_id, media_type="movie", max_retries=3, retry_delay=2):
     else:
         return None
 
-    # Create URLs upfront
-    title_url = f"{base_url}{tmdb_id}?api_key={TMDB_KEY}&language=en-US"
-    german_title_url = f"{base_url}{tmdb_id}?api_key={TMDB_KEY}&language=de-DE"
+    # Direct API call for English title (official)
+    english_url = f"{base_url}{tmdb_id}?api_key={TMDB_KEY}&language=en-US"
+
+    # German title for compatibility
+    german_url = f"{base_url}{tmdb_id}?api_key={TMDB_KEY}&language=de-DE"
+
+    # For alternative titles in all languages
     alt_titles_url = f"{base_url}{tmdb_id}/alternative_titles?api_key={TMDB_KEY}" if media_type != "collection" else None
 
     # Function to make request with retries
@@ -96,35 +104,41 @@ def get_tmdb_titles(tmdb_id, media_type="movie", max_retries=3, retry_delay=2):
                 return make_request(url, retry_count + 1)
             return None
 
-    # Get main title
-    title_data = make_request(title_url)
-    if not title_data:
-        logger.error(f"Error fetching main title for ID {tmdb_id}")
-        return None
+    # Get English title directly - simplest and most reliable approach
+    english_data = make_request(english_url)
+    english_title = "Unknown English Title"
 
-    main_title = title_data.get(title_field, "Unknown Title")
+    if english_data and title_field in english_data:
+        english_title = english_data.get(title_field)
 
-    # Get German title
-    german_title_data = make_request(german_title_url)
-    german_title = german_title_data.get(title_field,
-                                         "Unknown German Title") if german_title_data else "Unknown German Title"
+    # Get German title for compatibility with existing code
+    german_data = make_request(german_url)
+    german_title = "Unknown German Title"
 
-    # For collections, we don't need to fetch alternative titles
+    if german_data and title_field in german_data:
+        german_title = german_data.get(title_field)
+
+    # Start collecting all titles with the ones we have
+    all_titles = [english_title, german_title]
+
+    # For collections, we don't need alternative titles
     if media_type == "collection":
-        return [main_title, german_title]
+        return {"all_titles": all_titles, "english_title": english_title}
 
-    # Get alternative titles
-    all_titles = [main_title, german_title]
-
+    # Get additional alternative titles
     if alt_titles_url:
         alt_titles_data = make_request(alt_titles_url)
-        if alt_titles_data:
-            alternative_titles = [alt_title.get("title") for alt_title in alt_titles_data.get("titles", [])]
-            all_titles.extend(alternative_titles)
+        if alt_titles_data and "titles" in alt_titles_data:
+            alt_titles = [alt_title.get("title") for alt_title in alt_titles_data.get("titles", [])]
+            all_titles.extend(alt_titles)
 
-    # Filter duplicates
-    unique_titles = list(set(all_titles))
-    return unique_titles
+    # Remove duplicates while preserving some order
+    unique_titles = []
+    for title in all_titles:
+        if title and title not in unique_titles:
+            unique_titles.append(title)
+
+    return {"all_titles": unique_titles, "english_title": english_title}
 
 
 # Load already processed data with error handling
@@ -216,6 +230,7 @@ def cleanup_unused_language_entries(media_items, processed_data):
 
 # Process a single item and fetch titles from TMDB
 def process_item(item):
+    """Process a single media item and fetch its titles from TMDB"""
     tmdb_id = str(item.get("TMDbId")) if item.get("TMDbId") is not None else None
     media_type = item.get("Type", "").lower()
     title = item.get("Name", "Unknown Title")
@@ -234,7 +249,7 @@ def process_item(item):
 
     entry_key = tmdb_id if tmdb_id else title
 
-    # Return all necessary data about this item
+    # Default result structure
     result = {
         'category': category,
         'entry_key': entry_key,
@@ -243,15 +258,18 @@ def process_item(item):
         'year': year,
         'type': media_type,
         'tmdb_id': tmdb_id,
-        'titles': None
+        'titles': [title],
+        'english_title': title  # Default to provided title
     }
 
+    # Only query TMDB if we have a valid ID
     if tmdb_id:
         tmdb_type = "collection" if media_type == "boxset" else "tv" if media_type == "series" else "movie"
-        titles = get_tmdb_titles(tmdb_id, tmdb_type)
-        result['titles'] = titles if titles else []
-    else:
-        result['titles'] = [title]
+        titles_data = get_tmdb_titles(tmdb_id, tmdb_type)
+
+        if titles_data:
+            result['titles'] = titles_data["all_titles"]
+            result['english_title'] = titles_data["english_title"]
 
     return result
 
@@ -338,7 +356,8 @@ def collect_titles():
 
             entry_data = {
                 "titles": result['titles'],
-                "extracted_title": result['title'],
+                "extracted_title": result['title'],  # Original title from the item
+                "english_title": result['english_title'],  # English title from TMDB
                 "year": result['year'],
                 "type": result['type'],
                 "last_updated": datetime.now().isoformat()
