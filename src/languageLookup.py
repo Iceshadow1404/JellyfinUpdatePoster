@@ -103,6 +103,7 @@ def get_tmdb_titles(tmdb_id, media_type="movie", max_retries=3, retry_delay=2):
         return None
 
     main_title = title_data.get(title_field, "Unknown Title")
+    english_title = main_title  # Store English title separately
 
     # Get German title
     german_title_data = make_request(german_title_url)
@@ -111,7 +112,7 @@ def get_tmdb_titles(tmdb_id, media_type="movie", max_retries=3, retry_delay=2):
 
     # For collections, we don't need to fetch alternative titles
     if media_type == "collection":
-        return [main_title, german_title]
+        return [main_title, german_title, english_title]
 
     # Get alternative titles
     all_titles = [main_title, german_title]
@@ -119,12 +120,17 @@ def get_tmdb_titles(tmdb_id, media_type="movie", max_retries=3, retry_delay=2):
     if alt_titles_url:
         alt_titles_data = make_request(alt_titles_url)
         if alt_titles_data:
-            alternative_titles = [alt_title.get("title") for alt_title in alt_titles_data.get("titles", [])]
-            all_titles.extend(alternative_titles)
+            # Look for English titles in alternative titles
+            for alt_title in alt_titles_data.get("titles", []):
+                iso_3166_1 = alt_title.get("iso_3166_1", "").upper()
+                if iso_3166_1 == "US" or iso_3166_1 == "GB":
+                    english_title = alt_title.get("title", english_title)
+                alternative_titles = [alt_title.get("title") for alt_title in alt_titles_data.get("titles", [])]
+                all_titles.extend(alternative_titles)
 
     # Filter duplicates
     unique_titles = list(set(all_titles))
-    return unique_titles
+    return unique_titles + [english_title]  # Add English title to the list
 
 
 # Load already processed data with error handling
@@ -309,7 +315,7 @@ def collect_titles():
     max_workers = min(25, needed_requests)  # Limit maximum concurrent workers (slightly less than pool size)
 
     # Split items into batches for periodic saving
-    batch_size = min(50, needed_requests)
+    batch_size = min(100, needed_requests)
     batches = [items_to_process[i:i + batch_size] for i in range(0, needed_requests, batch_size)]
 
     processed_count = 0
@@ -339,6 +345,7 @@ def collect_titles():
             entry_data = {
                 "titles": result['titles'],
                 "extracted_title": result['title'],
+                "english_title": result['titles'][-1] if result['titles'] and len(result['titles']) > 0 else result['title'],
                 "year": result['year'],
                 "type": result['type'],
                 "last_updated": datetime.now().isoformat()
