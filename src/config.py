@@ -1,6 +1,9 @@
 import os
 import sys
+from dotenv import load_dotenv
 import logging
+
+load_dotenv()
 
 env_vars = {
     'JELLYFIN_URL': os.getenv('JELLYFIN_URL'),
