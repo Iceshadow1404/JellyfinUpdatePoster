@@ -596,8 +596,11 @@ def cover_cleaner(language_data):
 
     files = os.listdir(RAW_COVER_DIR)
 
-    if files:  # Check if there are any files
+    if files:
         for filename in files:
+            if filename == '.DS_Store':
+                continue
+
             file_path = os.path.join(RAW_COVER_DIR, filename)
             logger.info(f"Processing file: {filename}")
 
@@ -612,22 +615,16 @@ def cover_cleaner(language_data):
                     logger.debug(f"File moved to {destination_path}")
 
                     if process_image_file(file_path, language_data):
-                        # Check if the file was moved during processing
-                        if not os.path.exists(file_path):
-                            pass
-                        else:
+                        if os.path.exists(file_path):
                             move_to_consumed(file_path)
                     else:
                         logger.warning(f"Failed to process image file: {filename}")
             except Exception as e:
                 logger.error(f"Error processing {filename}: {str(e)}")
-                # Try to move the original file if it still exists
                 if os.path.exists(original_file_path):
                     move_to_consumed(original_file_path)
 
-            # Clean up empty folders in NO_MATCH_FOLDER
             cleanup_empty_folders()
-
     else:
         logger.info('No files found in the folder.')
 
