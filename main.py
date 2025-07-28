@@ -52,6 +52,10 @@ async def main_loop(force: bool, webhook_server: WebhookServer):
                     pass
 
             files = os.listdir(RAW_COVER_DIR)
+
+            if len(files) == 1 and files[0] == '.DS_Store':
+                files = False
+
             content_changed = check_jellyfin_content()
             webhook_triggered = webhook_server.get_trigger_status() if ENABLE_WEBHOOK else False
 
