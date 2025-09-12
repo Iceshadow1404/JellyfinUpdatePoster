@@ -31,6 +31,22 @@ def clean_movie_name(name: str) -> str:
     # Trim any leading or trailing whitespace
     return name.strip()
 
+def extract_folder_from_path(path: str, media_type: str) -> str:
+    if not path:
+        return ""
+
+    parts = path.strip('/').split('/')
+
+    if media_type.lower() == 'movie':
+        # Movie file's parent directory
+        if len(parts) >= 2:
+            return parts[-2]  # second last segment
+        else:
+            return parts[-1]  # fallback last segment
+    elif media_type.lower() == 'series':
+        return parts[-1]
+    else:
+        return parts[-1]
 
 def get_series_and_movies() -> Optional[List[Dict]]:
     headers = {'X-Emby-Token': API_KEY}
@@ -107,19 +123,19 @@ def process_items(items: List[Dict]) -> List[Dict]:
 
         tmdb_id = item.get('ProviderIds', {}).get('Tmdb')
 
-        if item['Type'] == 'Series':
+        if item["Type"] == "Series":
             processed_item = {
-                "Id": item['Id'],
-                "Name": item['Name'],
+                "Id": item["Id"],
+                "Name": item["Name"],
                 "Type": "Series",
-                "LibraryId": item.get('ParentId', ''),
-                "OriginalTitle": item.get('OriginalTitle', item['Name']),
-                "Year": item.get('ProductionYear'),
-                "TMDbId": tmdb_id,
-                "Path": item.get('Path', ''),
-                "Seasons": OrderedDict()
+                "LibraryId": item.get("ParentId", ""),
+                "OriginalTitle": item.get("OriginalTitle", item["Name"]),
+                "Year": item.get("ProductionYear"),
+                "TMDb": item.get("ProviderIds", {}).get("Tmdb"),
+                "Path": extract_folder_from_path(item.get("Path", ""), "Series"),
+                "Seasons": OrderedDict(),
             }
-            series_dict[item['Id']] = processed_item
+            series_dict[item["Id"]] = processed_item
         elif item['Type'] == 'Season':
             series_id = item['SeriesId']
             if series_id in series_dict:
@@ -138,27 +154,27 @@ def process_items(items: List[Dict]) -> List[Dict]:
                     episode_number = item.get('IndexNumber', 0)
                     episode_key = f"{episode_number:02d}"  # Episode number with leading zeros
                     series_dict[series_id]['Seasons'][season_name]['Episodes'][episode_key] = item['Id']
-        elif item['Type'] == 'Movie':
+        elif item["Type"] == "Movie":
             processed_item = {
-                "Id": item['Id'],
-                "Name": item['Name'],
+                "Id": item["Id"],
+                "Name": item["Name"],
                 "Type": "Movie",
-                "LibraryId": item.get('ParentId', ''),
-                "OriginalTitle": item.get('OriginalTitle', item['Name']),
-                "Year": item.get('ProductionYear'),
-                "TMDbId": tmdb_id,
-                "Path": os.path.dirname(item.get('Path',''))
+                "LibraryId": item.get("ParentId", ""),
+                "OriginalTitle": item.get("OriginalTitle", item["Name"]),
+                "Year": item.get("ProductionYear"),
+                "TMDb": item.get("ProviderIds", {}).get("Tmdb"),
+                "Path": extract_folder_from_path(item.get("Path", ""), "Movie"),
             }
             processed_items.append(processed_item)
-        elif item['Type'] == 'BoxSet':
+        elif item["Type"] == "BoxSet":
             processed_item = {
-                "Id": item['Id'],
-                "Name": item['Name'],
+                "Id": item["Id"],
+                "Name": item["Name"],
                 "Type": "BoxSet",
-                "LibraryId": item.get('ParentId', ''),
-                "Year": item.get('ProductionYear'),
-                "TMDb": item.get('ProviderIds', {}).get('Tmdb'),
-                "Path": item['Name']
+                "LibraryId": item.get("ParentId", ""),
+                "Year": item.get("ProductionYear"),
+                "TMDb": item.get("ProviderIds", {}).get("Tmdb"),
+                "Path": sanitize_folder_name(item["Name"]),
             }
             boxsets.append(processed_item)
 
