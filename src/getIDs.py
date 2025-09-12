@@ -10,6 +10,7 @@ from collections import OrderedDict
 from src.constants import OUTPUT_FILENAME, BLACKLIST_FILENAME
 from src.config import JELLYFIN_URL, API_KEY, INCLUDE_EPISODES
 from src.blacklist import load_blacklist, save_blacklist, add_to_blacklist, update_output_file
+from src.coverCleaner import sanitize_folder_name
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def get_series_and_movies() -> Optional[List[Dict]]:
     params = {
         'Recursive': 'true',
         'IncludeItemTypes': ','.join(item_types),
-        'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,IndexNumber,ProductionYear,ProviderIds',
+        'Fields': 'Name,OriginalTitle,Id,ParentId,ParentIndexNumber,IndexNumber,ProductionYear,ProviderIds,Path',
         'isMissing': 'False'
     }
 
@@ -115,6 +116,7 @@ def process_items(items: List[Dict]) -> List[Dict]:
                 "OriginalTitle": item.get('OriginalTitle', item['Name']),
                 "Year": item.get('ProductionYear'),
                 "TMDbId": tmdb_id,
+                "Path": item.get('Path', ''),
                 "Seasons": OrderedDict()
             }
             series_dict[item['Id']] = processed_item
@@ -144,7 +146,8 @@ def process_items(items: List[Dict]) -> List[Dict]:
                 "LibraryId": item.get('ParentId', ''),
                 "OriginalTitle": item.get('OriginalTitle', item['Name']),
                 "Year": item.get('ProductionYear'),
-                "TMDbId": tmdb_id
+                "TMDbId": tmdb_id,
+                "Path": os.path.dirname(item.get('Path',''))
             }
             processed_items.append(processed_item)
         elif item['Type'] == 'BoxSet':
@@ -154,7 +157,8 @@ def process_items(items: List[Dict]) -> List[Dict]:
                 "Type": "BoxSet",
                 "LibraryId": item.get('ParentId', ''),
                 "Year": item.get('ProductionYear'),
-                "TMDbId": tmdb_id
+                "TMDb": item.get('ProviderIds', {}).get('Tmdb'),
+                "Path": item['Name']
             }
             boxsets.append(processed_item)
 
