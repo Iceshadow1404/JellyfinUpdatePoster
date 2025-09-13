@@ -28,4 +28,4 @@ DISABLE_BLACKLIST = os.getenv('DISABLE_BLACKLIST', 'false').lower() in ['true', 
 RAW_TIMES = [time.strip() for time in os.getenv('SCHEDULED_TIMES', '').split(',') if time.strip()]
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 10))
 # When enabled, folders will be named using the path from Jellyfin instead of "Name (Year)" scheme
-USE_PATH_FOR_FOLDERS = os.getenv('USE_PATH_FOR_FOLDERS', 'true').lower() in ['true', 'yes', '1', 'y']
+USE_PATH_FOR_FOLDERS = os.getenv('USE_PATH_FOR_FOLDERS', 'false').lower() in ['true', 'yes', '1', 'y']
