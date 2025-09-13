@@ -16,7 +16,7 @@ import aiohttp
 import hashlib
 
 # Local imports
-from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, BATCH_SIZE
+from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, BATCH_SIZE, USE_PATH_FOR_FOLDERS
 from src.constants import (
     POSTER_DIR,
     COLLECTIONS_DIR,
@@ -97,6 +97,14 @@ class UpdateCover:
         return name.strip()
 
     @staticmethod
+    def clean_path_name(name: str) -> str:
+        """Clean filename by removing invalid characters while preserving brackets for path-based naming"""
+        invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '&', "'", '!', '?']
+        for char in invalid_chars:
+            name = name.replace(char, '')
+        return name.strip()
+
+    @staticmethod
     def find_image(item_dir: Path, filename: str) -> Optional[Path]:
         """Find image file with various possible extensions"""
         for ext in ['png', 'jpg', 'jpeg', 'webp']:
@@ -170,6 +178,18 @@ class UpdateCover:
                 logger.error(f"Error loading language data from {LANGUAGE_DATA_FILENAME}")
                 self._language_data = {}
 
+    def _load_sorted_series_data(self):
+        """Load the sorted series data from the JSON file."""
+        try:
+            with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            logger.error(f"Sorted series data file not found: {OUTPUT_FILENAME}")
+            return []
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON from sorted series data file: {OUTPUT_FILENAME}")
+            return []
+
     def get_item_directory(self, item: Dict) -> Optional[Path]:
         """Find the directory for a given item based on its metadata"""
         item_type = item.get('Type', 'Series' if 'Seasons' in item else 'Movie')
@@ -192,13 +212,42 @@ class UpdateCover:
             english_title = extracted_title
 
         item_year = item.get('Year')
-        possible_keys = (
-            [extracted_title.lower()] if item_type == "BoxSet"
-            else [
-                f"{original_title} ({item_year})".lower(),
-                f"{extracted_title} ({item_year})".lower()
-            ]
-        )
+        
+        # Determine possible folder names based on configuration
+        if USE_PATH_FOR_FOLDERS:
+            # Use path-based folder naming
+            possible_keys = []
+            sorted_series_data = self._load_sorted_series_data()
+            
+            # Find the item in sorted series data by ID
+            item_id = item.get('Id')
+            for series_item in sorted_series_data:
+                if series_item.get('Id') == item_id:
+                    path = series_item.get('Path', '')
+                    if path:
+                        # Sanitize the path (remove invalid chars but keep brackets)
+                        sanitized_path = self.clean_path_name(path)
+                        possible_keys.append(sanitized_path.lower())
+                        break
+            
+            # If no path found, fall back to name-year scheme
+            if not possible_keys:
+                possible_keys = (
+                    [extracted_title.lower()] if item_type == "BoxSet"
+                    else [
+                        f"{original_title} ({item_year})".lower(),
+                        f"{extracted_title} ({item_year})".lower()
+                    ]
+                )
+        else:
+            # Use traditional name-year scheme
+            possible_keys = (
+                [extracted_title.lower()] if item_type == "BoxSet"
+                else [
+                    f"{original_title} ({item_year})".lower(),
+                    f"{extracted_title} ({item_year})".lower()
+                ]
+            )
 
         # Check cache and lookup
         for key in possible_keys:
