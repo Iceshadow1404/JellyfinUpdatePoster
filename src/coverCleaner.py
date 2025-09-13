@@ -9,9 +9,10 @@ from PIL import Image
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
+from src.config import USE_PATH_FOR_FOLDERS
 
 from src.constants import LANGUAGE_DATA_FILENAME, RAW_COVER_DIR, COVER_DIR, COLLECTIONS_DIR, CONSUMED_DIR, \
-    NO_MATCH_FOLDER, REPLACED_DIR, POSTER_DIR
+    NO_MATCH_FOLDER, REPLACED_DIR, POSTER_DIR, OUTPUT_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,18 @@ def load_language_data():
     except json.JSONDecodeError:
         logger.error(f"Error decoding JSON from language data file: {LANGUAGE_DATA_FILENAME}")
         return {}
+
+def load_sorted_series_data():
+    """Load the sorted series data from the JSON file."""
+    try:
+        with open(OUTPUT_FILENAME, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.error(f"Sorted series data file not found: {OUTPUT_FILENAME}")
+        return []
+    except json.JSONDecodeError:
+        logger.error(f"Error decoding JSON from sorted series data file: {OUTPUT_FILENAME}")
+        return []
 
 def convert_to_jpg(file_path):
     """Convert image to JPG format if it's not already."""
@@ -285,6 +298,14 @@ def sanitize_folder_name(folder_name):
         folder_name = folder_name.replace(char, '')
     return folder_name.strip()
 
+def sanitize_path_folder_name(folder_name):
+    """Remove invalid characters from folder name while preserving brackets for path-based naming."""
+    # Keep brackets for IMDB/TVDB IDs, but remove other invalid characters
+    invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '&', "'", '!', '?']
+    for char in invalid_chars:
+        folder_name = folder_name.replace(char, '')
+    return folder_name.strip()
+
 def is_collection(filename):
     """Determine if a file is part of a collection based on its filename."""
     # Expand the search to include more collection-related keywords
@@ -328,8 +349,57 @@ def process_image_file(file_path, language_data):
             else extracted_title
         )
 
-        folder_name = f"{display_title} ({year})" if year else display_title
-        folder_name = sanitize_folder_name(folder_name)
+        # Determine folder name based on configuration
+        logger.debug(f"USE_PATH_FOR_FOLDERS setting: {USE_PATH_FOR_FOLDERS}")
+        if USE_PATH_FOR_FOLDERS:
+            logger.debug("Using path-based folder naming")
+            # Load sorted series data to get the path information
+            sorted_series_data = load_sorted_series_data()
+            folder_name = None
+            
+            logger.debug(f"Looking for matched item ID: {matched_item.get('id')}")
+            logger.debug(f"Searching in {len(sorted_series_data)} items from sorted_series.json")
+            
+            # Find the matching item in sorted series data by ID
+            for item in sorted_series_data:
+                if item.get('Id') == matched_item.get('id'):
+                    folder_name = item.get('Path', '')
+                    logger.debug(f"Found path for item {matched_item.get('id')}: {folder_name}")
+                    break
+            
+            if folder_name:
+                folder_name = sanitize_path_folder_name(folder_name)
+                logger.debug(f"Using path-based folder name: {folder_name}")
+            else:
+                # Fallback to name-year scheme if path not found
+                logger.debug(f"ID {matched_item.get('id')} not found in sorted_series.json")
+                logger.debug("Trying fallback: searching by name similarity...")
+                
+                # Try to find by name similarity as fallback
+                for item in sorted_series_data:
+                    item_name = item.get('Name', '')
+                    original_title = item.get('OriginalTitle', '')
+                    
+                    # Check similarity with both Name and OriginalTitle
+                    name_similarity = fuzz.ratio(display_title.lower(), item_name.lower())
+                    original_similarity = fuzz.ratio(display_title.lower(), original_title.lower()) if original_title else 0
+                    
+                    similarity = max(name_similarity, original_similarity)
+                    if similarity >= 90:  # Higher threshold for fallback
+                        folder_name = item.get('Path', '')
+                        logger.debug(f"Found fallback match '{item_name}' (OriginalTitle: '{original_title}') with {similarity}% similarity, path: {folder_name}")
+                        break
+                
+                if folder_name:
+                    folder_name = sanitize_path_folder_name(folder_name)
+                    logger.debug(f"Using fallback path-based folder name: {folder_name}")
+                else:
+                    folder_name = f"{display_title} ({year})" if year else display_title
+                    folder_name = sanitize_folder_name(folder_name)
+                    logger.debug(f"No fallback match found, using name-year scheme: {folder_name}")
+        else:
+            folder_name = f"{display_title} ({year})" if year else display_title
+            folder_name = sanitize_folder_name(folder_name)
 
         new_folder = os.path.join(POSTER_DIR, folder_name)
         os.makedirs(new_folder, exist_ok=True)
@@ -360,8 +430,56 @@ def process_image_file(file_path, language_data):
         year_to_use = year or file_year
         timestamp = get_timestamp_folder()
 
-        # Create base folder name with year if available
-        base_name = f"{series_name} ({year_to_use})" if year_to_use else series_name
+        # Create base folder name based on configuration
+        logger.debug(f"USE_PATH_FOR_FOLDERS setting for unmatched item: {USE_PATH_FOR_FOLDERS}")
+        logger.debug(f"Processing unmatched item - series_name: '{series_name}', year_to_use: {year_to_use}")
+        if USE_PATH_FOR_FOLDERS:
+            logger.debug("Using path-based folder naming for unmatched item")
+            # Try to find the path from sorted series data even for unmatched items
+            sorted_series_data = load_sorted_series_data()
+            folder_name = None
+            
+            # Try to find a match by name similarity
+            logger.debug(f"Searching for similar items to '{series_name}' in {len(sorted_series_data)} items")
+            best_match = None
+            best_similarity = 0
+            
+            for item in sorted_series_data:
+                item_name = item.get('Name', '')
+                original_title = item.get('OriginalTitle', '')
+                
+                # Check similarity with both Name and OriginalTitle
+                name_similarity = fuzz.ratio(series_name.lower(), item_name.lower())
+                original_similarity = fuzz.ratio(series_name.lower(), original_title.lower()) if original_title else 0
+                
+                # Use the higher similarity
+                similarity = max(name_similarity, original_similarity)
+                match_field = "Name" if name_similarity >= original_similarity else "OriginalTitle"
+                
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_match = item
+                
+                if similarity >= 80:  # 80% similarity threshold
+                    folder_name = item.get('Path', '')
+                    logger.debug(f"Found similar item '{item_name}' (OriginalTitle: '{original_title}') via {match_field} (similarity: {similarity}%) with path: {folder_name}")
+                    break
+            
+            # Log the best match even if it doesn't meet the threshold
+            if best_match and not folder_name:
+                logger.debug(f"Best match was '{best_match.get('Name')}' (OriginalTitle: '{best_match.get('OriginalTitle')}') with {best_similarity}% similarity (threshold: 80%)")
+            
+            if folder_name:
+                base_name = sanitize_path_folder_name(folder_name)
+                logger.debug(f"Using path-based folder name for unmatched item: {base_name}")
+            else:
+                # Fallback to name-year scheme if no path found
+                base_name = f"{series_name} ({year_to_use})" if year_to_use else series_name
+                logger.debug(f"No path found for unmatched item, using fallback: {base_name}")
+        else:
+            # Use name-year scheme
+            base_name = f"{series_name} ({year_to_use})" if year_to_use else series_name
+            logger.debug(f"Using name-year scheme for unmatched item: {base_name}")
 
         # For background images, append " - Background" to the filename
         if is_background and not filename.lower().endswith(' - background.jpg'):
