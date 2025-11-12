@@ -25,5 +25,6 @@ TMDB_KEY = env_vars['TMDB_API_KEY']
 INCLUDE_EPISODES = os.getenv('INCLUDE_EPISODES', 'false').lower() in ['true', 'yes', '1', 'y']
 ENABLE_WEBHOOK = os.getenv('ENABLE_WEBHOOK', 'false').lower() in ['true', 'yes', '1', 'y']
 DISABLE_BLACKLIST = os.getenv('DISABLE_BLACKLIST', 'false').lower() in ['true', 'yes', '1', 'y']
+IGNORE_CONTENT_CHANGED = os.getenv('IGNORE_CONTENT_CHANGED', 'false').lower() in ['true', 'yes', '1', 'y']
 RAW_TIMES = [time.strip() for time in os.getenv('SCHEDULED_TIMES', '').split(',') if time.strip()]
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 10))

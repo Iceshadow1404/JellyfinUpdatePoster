@@ -4,6 +4,7 @@ import os
 from src.logging import logging
 from src.constants import CONTENT_IDS_FILE
 from src.getIDs import get_jellyfin_content
+from src.config import IGNORE_CONTENT_CHANGED
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,13 @@ def save_content_ids(ids):
     with open(CONTENT_IDS_FILE, 'w') as f:
         json.dump(ids, f)
 
+
 def check_jellyfin_content():
+
+    if IGNORE_CONTENT_CHANGED:
+        logging.info('IGNORE_CONTENT_CHANGED is enabled. Skipping content change detection.')
+        return False
+
     try:
         old_ids = load_content_ids()
 

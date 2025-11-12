@@ -82,6 +82,7 @@ The recommended method is to use Docker.
   * `TMDB_API_KEY`: **Required.** Your TMDb API key.
   * `INCLUDE_EPISODES`: Set to `true` or `false` to manage episode images. Defaults to `false`.
   * `ENABLE_WEBHOOK`: Set to `true` to enable the webhook trigger. Defaults to `false`.
+  * `IGNORE_CONTENT_CHANGED`: Set to `true` to disable content change detection and always skip processing Defaults to `false`.
   * `SCHEDULED_TIMES`: Optional comma-separated list of `HH:MM` times to run scheduled updates.
   * `TZ`: Optional timezone for scheduling, e.g., `America/New_York`.
 
