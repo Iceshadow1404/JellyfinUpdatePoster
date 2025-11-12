@@ -48,19 +48,20 @@ def check_jellyfin_content():
             new_ids = get_content_ids(items)
 
             if old_ids != new_ids:
-                if IGNORE_CONTENT_CHANGED:
-                    logging.info('New content detected, but skipping processing because IGNORE_CONTENT_CHANGED is enabled')
-                    return False
+                if not IGNORE_CONTENT_CHANGED:
+                    logging.info('New content detected in Jellyfin!')
 
-                logging.info('New content detected in Jellyfin!')
-
-                logging.info(f'Old IDs: {len(old_ids)}')
-                logging.info(f'New IDs: {len(new_ids)}')
+                    logging.info(f'Old IDs: {len(old_ids)}')
+                    logging.info(f'New IDs: {len(new_ids)}')
 
                 processed_items = get_jellyfin_content()
 
                 if processed_items:
                     save_content_ids(new_ids)
+                    if IGNORE_CONTENT_CHANGED:
+                        logging.info(
+                            'New content detected, but skipping processing because IGNORE_CONTENT_CHANGED is enabled')
+                        return False
                     return True
                 return False
             else:
