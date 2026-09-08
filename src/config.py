@@ -22,6 +22,13 @@ JELLYFIN_URL = env_vars['JELLYFIN_URL'].rstrip('/')
 API_KEY = env_vars['JELLYFIN_API_KEY']
 TMDB_KEY = env_vars['TMDB_API_KEY']
 
+
+def jellyfin_auth_headers() -> dict[str, str]:
+    return {
+        'X-Emby-Token': API_KEY,
+        'Authorization': f'MediaBrowser Token="{API_KEY}"',
+    }
+
 INCLUDE_EPISODES = os.getenv('INCLUDE_EPISODES', 'false').lower() in ['true', 'yes', '1', 'y']
 ENABLE_WEBHOOK = os.getenv('ENABLE_WEBHOOK', 'false').lower() in ['true', 'yes', '1', 'y']
 DISABLE_BLACKLIST = os.getenv('DISABLE_BLACKLIST', 'false').lower() in ['true', 'yes', '1', 'y']

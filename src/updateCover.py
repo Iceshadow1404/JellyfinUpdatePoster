@@ -16,7 +16,7 @@ import aiohttp
 import hashlib
 
 # Local imports
-from src.config import JELLYFIN_URL, API_KEY, TMDB_KEY, BATCH_SIZE
+from src.config import JELLYFIN_URL, TMDB_KEY, BATCH_SIZE, jellyfin_auth_headers
 from src.constants import (
     POSTER_DIR,
     COLLECTIONS_DIR,
@@ -236,7 +236,7 @@ class UpdateCover:
         """Delete all existing backdrop images for an item"""
         try:
             url = f"{JELLYFIN_URL}/Items/{item_id}/Images"
-            headers = {'X-Emby-Token': API_KEY, 'Connection': 'keep-alive'}
+            headers = {**jellyfin_auth_headers(), 'Connection': 'keep-alive'}
 
             async with self.semaphore:
                 async with self.session.get(url, headers=headers) as response:
@@ -260,7 +260,7 @@ class UpdateCover:
         """Get hash of the current image on Jellyfin server"""
         try:
             url = f"{JELLYFIN_URL}/Items/{item_id}/Images/{image_type}/{index}"
-            headers = {'X-Emby-Token': API_KEY, 'Connection': 'keep-alive'}
+            headers = {**jellyfin_auth_headers(), 'Connection': 'keep-alive'}
 
             async with self.semaphore:
                 async with self.session.get(url, headers=headers) as response:
@@ -340,7 +340,7 @@ class UpdateCover:
 
             url = f"{JELLYFIN_URL}/Items/{id}/Images/{image_type}/0"
             headers = {
-                'X-Emby-Token': API_KEY,
+                **jellyfin_auth_headers(),
                 'Content-Type': self.get_content_type(str(image_path)),
                 'Connection': 'keep-alive'
             }

@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 from collections import OrderedDict
 
 from src.constants import OUTPUT_FILENAME, BLACKLIST_FILENAME
-from src.config import JELLYFIN_URL, API_KEY, INCLUDE_EPISODES
+from src.config import JELLYFIN_URL, INCLUDE_EPISODES, jellyfin_auth_headers
 from src.blacklist import load_blacklist, save_blacklist, add_to_blacklist, update_output_file
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ def clean_movie_name(name: str) -> str:
 
 
 def get_series_and_movies() -> Optional[List[Dict]]:
-    headers = {'X-Emby-Token': API_KEY}
+    headers = jellyfin_auth_headers()
     url = f'{JELLYFIN_URL}/Items'
 
     item_types = ['Series', 'Season', 'Movie', 'BoxSet']
