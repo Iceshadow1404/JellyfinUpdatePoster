@@ -118,24 +118,6 @@ def process_items(items: List[Dict]) -> List[Dict]:
                 "Seasons": OrderedDict()
             }
             series_dict[item['Id']] = processed_item
-        elif item['Type'] == 'Season':
-            series_id = item['SeriesId']
-            if series_id in series_dict:
-                season_number = item.get('IndexNumber', 0)
-                season_name = f"Season {season_number}"
-                series_dict[series_id]['Seasons'][season_name] = {
-                    "Id": item['Id'],
-                    "Episodes": OrderedDict()
-                }
-        elif item['Type'] == 'Episode':
-            series_id = item['SeriesId']
-            season_index = item.get('ParentIndexNumber', 0)
-            if series_id in series_dict:
-                season_name = f"Season {season_index}"
-                if season_name in series_dict[series_id]['Seasons']:
-                    episode_number = item.get('IndexNumber', 0)
-                    episode_key = f"{episode_number:02d}"  # Episode number with leading zeros
-                    series_dict[series_id]['Seasons'][season_name]['Episodes'][episode_key] = item['Id']
         elif item['Type'] == 'Movie':
             processed_item = {
                 "Id": item['Id'],
@@ -157,6 +139,30 @@ def process_items(items: List[Dict]) -> List[Dict]:
                 "TMDbId": tmdb_id
             }
             boxsets.append(processed_item)
+
+    # Process Seasons and Episodes separately
+    for item in items:
+        if item.get('LocationType') == 'Virtual':
+            logger.debug(f"Skipping virtual item: {item.get('Name', 'Unknown')} (ID: {item.get('Id', 'Unknown')})")
+            continue
+        if item['Type'] == 'Season':
+            series_id = item.get('SeriesId') or item.get('ParentId')
+            if series_id and series_id in series_dict:
+                season_number = item.get('IndexNumber', 0)
+                season_name = f"Season {season_number}"
+                series_dict[series_id]['Seasons'][season_name] = {
+                    "Id": item['Id'],
+                    "Episodes": OrderedDict()
+                }
+        elif item['Type'] == 'Episode':
+            series_id = item.get('SeriesId')
+            if series_id and series_id in series_dict:
+                season_index = item.get('ParentIndexNumber', 0)
+                season_name = f"Season {season_index}"
+                if season_name in series_dict[series_id]['Seasons']:
+                    episode_number = item.get('IndexNumber', 0)
+                    episode_key = f"{episode_number:02d}"  # Episode number with leading zeros
+                    series_dict[series_id]['Seasons'][season_name]['Episodes'][episode_key] = item['Id']
 
     # Sort seasons and episodes
     for series in series_dict.values():
